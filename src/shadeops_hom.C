@@ -70,7 +70,6 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         if (!gdp && PY_PyErr_Occurred()) return NULL;
        
         GA_Size num_points = gdp->getNumPoints();
-        std::cout << num_points << std::endl; 
         PY_PyObject *result = PY_PyLong_FromLongLong(num_points);
         PY_AutoObject(PY_PyObject_CallMethod(py_guhandle, "destroy", NULL));
         return result;

@@ -1,0 +1,6 @@
+*.hiplc
+backup
+*.o
+*.so
+__pycache__
+
