@@ -3,11 +3,12 @@
 #include <PY/PY_AutoObject.h>
 #include <PY/PY_InterpreterAutoLock.h>
 #include <HOM/HOM_Module.h>
-#include <UT/UT_DSOVersion.h>
 #include <OP/OP_Director.h>
 #include <UT/UT_SysSpecific.h>
 #include <GU/GU_DetailHandle.h>
 #include <GU/GU_Detail.h>
+#include <SOP/SOP_Node.h>
+#include <OP/OP_Context.h>
 
 #include <iostream>
 
@@ -34,44 +35,28 @@ static const char *Doc_GeoPageReport = "do a thing\n";
 
 PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
 
-    HOM_AutoLock hom_lock;
-    PY_InterpreterAutoLock interpreter_auto_lock;
-
-    PY_PyObject *hou_geometry = nullptr;
-    if (!PY_PyArg_ParseTuple(args, "O", &hou_geometry)) PY_Py_RETURN_NONE;
-
-    PY_AutoObject hou_module(PY_PyImport_ImportModule("hou"));
-    PY_PyObject *hou_module_dict = PY_PyModule_GetDict(hou_module);
-    PY_PyObject *hou_geometry_class = PY_PyDict_GetItemString(hou_module_dict, "Geometry");
-    if (!hou_geometry_class) {
-        PY_PyErr_SetString(PY_PyExc_RuntimeError(), "hou.Geometry not defined");
-        return NULL;
-    }
-    if (!PY_PyObject_TypeCheck(hou_geometry, (PY_PyTypeObject *)hou_geometry_class)) {
-        PY_PyErr_SetString(PY_PyExc_TypeError(), "Not a hou.Geometry");
-        return NULL;
-
-    }
+    const char *sop_path = nullptr;
+    if (!PY_PyArg_ParseTuple(args, "s", &sop_path)) PY_Py_RETURN_NONE;
+    if (!sop_path) return NULL;
+    
     try {
-        // TODO -  Fast Call?
-        //PY_PyObject *py_guhandle = PY_PyObject_CallMethod(hou_geometry, "_guDetailHandle", NULL);
-        PY_AutoObject py_guhandle(
-            PY_PyObject_CallMethod(hou_geometry, "_guDetailHandle", NULL)
-        );
-        if (!py_guhandle) return NULL;
+        HOM_AutoLock hom_lock;
         
-        PY_AutoObject swig_ptr(PY_PyObject_CallMethod(py_guhandle, "_asVoidPointer", NULL));
-        if (!swig_ptr) return NULL;
-
-        PY_AutoObject gdp_address(PY_PyObject_CallMethod(swig_ptr, "__int__", NULL));
-        if (!gdp_address) return NULL;
-        
-        const GU_Detail *gdp = static_cast<const GU_Detail *>(PY_PyLong_AsVoidPtr(gdp_address));
-        if (!gdp && PY_PyErr_Occurred()) return NULL;
+        SOP_Node *sop_node = OPgetDirector()->findSOPNode(sop_path);
+        if (!sop_node) {
+            throw HOM_NodeError("Could not find sop");
+        }
        
+        OP_Context context{};
+        // TODO: Pick output?
+        GU_DetailHandle gu_handle = sop_node->getCookedGeoHandle(context);
+        if (gu_handle.isNull()) {
+            throw HOM_InvalidGeometry("Could not fetch cooked geometry");
+        }
+        const GU_Detail *gdp = gu_handle.gdp();
+
         GA_Size num_points = gdp->getNumPoints();
         PY_PyObject *result = PY_PyLong_FromLongLong(num_points);
-        PY_AutoObject(PY_PyObject_CallMethod(py_guhandle, "destroy", NULL));
         return result;
 
     } catch (HOM_Error &error) {
