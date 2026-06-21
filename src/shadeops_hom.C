@@ -10,7 +10,11 @@
 #include <SOP/SOP_Node.h>
 #include <OP/OP_Context.h>
 
+#include <GA/GA_IndexMap.h>
+
 #include <iostream>
+
+static const char *Doc_GeoPageReport = "do a thing\n";
 
 static PY_PyObject *
 createHouException(
@@ -31,7 +35,45 @@ createHouException(
     return PY_PyObject_Call(exception_class, args, NULL);
 }
 
-static const char *Doc_GeoPageReport = "do a thing\n";
+GA_Size GeoPageStats(const char *sop_path) {
+    HOM_AutoLock hom_lock;
+
+    SOP_Node *sop_node = OPgetDirector()->findSOPNode(sop_path);
+    if (!sop_node) {
+        throw HOM_NodeError("Could not find sop");
+    }
+   
+    OP_Context context{};
+    // TODO: Pick output?
+    GU_DetailHandle gu_handle = sop_node->getCookedGeoHandle(context);
+    if (gu_handle.isNull()) {
+        throw HOM_InvalidGeometry("Could not fetch cooked geometry");
+    }
+    const GU_Detail *gdp = gu_handle.gdp();
+    const GA_IndexMap &point_map = gdp->getPointMap();
+
+    std::cout << "Index Size: " << point_map.indexSize() << std::endl;
+    std::cout << "Offset Size: " << point_map.offsetSize() << std::endl;
+    
+    for (
+        GA_AttributeDict::iterator it = gdp->getAttributeDict(GA_ATTRIB_POINT).begin(GA_SCOPE_PUBLIC);
+        !it.atEnd();
+        ++it
+    )
+    {
+        const GA_Attribute *attrib = it.attrib();
+        std::cout << attrib->getFullName() << std::endl;
+    }
+
+    GA_Offset start, end;
+    for (GA_Iterator it(gdp->getPointRange()); it.blockAdvance(start, end); ) {
+        std::cout << start << " " << end << std::endl;
+    }
+    GA_Size num_points = gdp->getNumPoints();
+    std::cout << "fetching pts: " << num_points << std::endl;
+    
+    return num_points;
+}
 
 PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
 
@@ -40,23 +82,8 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
     if (!sop_path) return NULL;
     
     try {
-        HOM_AutoLock hom_lock;
-        
-        SOP_Node *sop_node = OPgetDirector()->findSOPNode(sop_path);
-        if (!sop_node) {
-            throw HOM_NodeError("Could not find sop");
-        }
-       
-        OP_Context context{};
-        // TODO: Pick output?
-        GU_DetailHandle gu_handle = sop_node->getCookedGeoHandle(context);
-        if (gu_handle.isNull()) {
-            throw HOM_InvalidGeometry("Could not fetch cooked geometry");
-        }
-        const GU_Detail *gdp = gu_handle.gdp();
-
-        GA_Size num_points = gdp->getNumPoints();
-        PY_PyObject *result = PY_PyLong_FromLongLong(num_points);
+        GA_Size num_points = GeoPageStats(sop_path);
+        PY_PyObject *result = PY_PyLong_FromLong(num_points);
         return result;
 
     } catch (HOM_Error &error) {
