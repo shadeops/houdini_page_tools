@@ -53,6 +53,7 @@ struct PageBits {
 
 struct AttribStats {
     UT_StringHolder name;
+    UT_StringHolder scope;
     GA_DataId data_id = GA_INVALID_DATAID;
     bool has_page_details = false;
     UT_BitArray constant_pages;
@@ -61,7 +62,10 @@ struct AttribStats {
 // SoA since we are going to create a Python object from each onne of these.
 struct OwnerStats {
     GA_Size offset_size = 0;
+    GA_Size index_size = 0;
     GA_Size num_pages = 0;
+    bool is_monotonic = false;
+    bool is_trivial = false;
     UT_Array<GA_Size> active;
     UT_Array<GA_Size> temporary;
     UT_Array<GA_Size> vacant;
@@ -75,6 +79,18 @@ struct OwnerStats {
 // b >> 5 = which uint32_t to write to in the array of 32
 // lowest bit == 0 index in page.
 inline void setPageBit (uint32_t *mask, int b)       { mask[b >> 5] |= (uint32_t(1) << (b & 31)); }
+
+const char *
+scopeName(GA_AttributeScope scope)
+{
+    switch (scope)
+    {
+        case GA_SCOPE_PUBLIC: return "public";
+        case GA_SCOPE_PRIVATE: return "private";
+        case GA_SCOPE_GROUP: return "group";
+        default: return "invalid";
+    }
+}
 
 void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) {
     HOM_AutoLock hom_lock;
@@ -100,6 +116,9 @@ void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) 
     const GA_Size num_pages = GA_Size(index_map.offsetSize() + GA_PAGE_SIZE - 1) >> GA_PAGE_BITS;
     out.num_pages = num_pages;
     out.offset_size = index_map.offsetSize();
+    out.index_size = index_map.indexSize();
+    out.is_monotonic = index_map.isMonotonicMap();
+    out.is_trivial = index_map.isTrivialMap();
 
     out.active.setSize(out.num_pages);
     out.temporary.setSize(out.num_pages);
@@ -148,6 +167,7 @@ void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) 
         AttribStats attrib_stats;
         attrib_stats.name = attrib->getFullName();
         attrib_stats.data_id = attrib->getDataId();
+        attrib_stats.scope = scopeName(attrib->getScope());
 
         const GA_ATINumeric *ati_num = GA_ATINumeric::cast(attrib);
         const GA_ATIString *ati_str = GA_ATIString::cast(attrib);
@@ -201,7 +221,9 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         ret = ret && dictThief(d, "attrib_owner", PY_PyString_FromString(attrib_owner));
         ret = ret && dictThief(d, "num_pages", PY_PyLong_FromLongLong(stats.num_pages));
         ret = ret && dictThief(d, "offset_size", PY_PyLong_FromLongLong(stats.offset_size));
-        ret = ret && dictThief(d, "size_of_ga_size", PY_PyLong_FromLongLong(sizeof(GA_Size)));
+        ret = ret && dictThief(d, "index_size", PY_PyLong_FromLongLong(stats.index_size));
+        ret = ret && dictThief(d, "monotonic_map", stats.is_monotonic ? PY_Py_True() : PY_Py_False());
+        ret = ret && dictThief(d, "trivial_map", stats.is_trivial ? PY_Py_True() : PY_Py_False());
         // PY_PyBytes_FromStringAndSize is not in Houdini 22's HDK
         //ret = ret && dictThief(d, "num_active_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.active.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         //ret = ret && dictThief(d, "num_temporary_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.temporary.getRawArray()), sizeof(GA_Size)*stats.num_pages));
@@ -211,11 +233,14 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         ret = ret && dictThief(d, "num_vacant_in_page", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.vacant.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "active_bits", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.active_bits.getRawArray()), sizeof(PageBits)*stats.num_pages));
         ret = ret && dictThief(d, "temporary_bits", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.temporary_bits.getRawArray()), sizeof(PageBits)*stats.num_pages));
+        // We explicit setSize(num_pages) on the UT_BitArrays for each attribute earlier
+        ret = ret && dictThief(d, "constant_page_words", PY_PyLong_FromLongLong(UT_BitArray::numWords(stats.num_pages)));
 
         PY_PyObject *ad = PY_PyDict_New();
         for (exint i = 0; i < stats.attrib_stats.size(); ++i) {
             const AttribStats &astats = stats.attrib_stats[i];
             PY_PyObject *d_astats = PY_PyDict_New();
+            dictThief(d_astats, "scope", PY_PyString_FromString(astats.scope));
             dictThief(d_astats, "data_id", PY_PyLong_FromLongLong(astats.data_id));
             if (astats.has_page_details) {
                 dictThief(d_astats, "constant_pages", 
