@@ -3,6 +3,12 @@ import array
 import pprint
 import shadeops_hom
 
+# Two attributes can share the same data ID even when they don't share
+# the same internal data pages or even fragmentation patterns.  Note
+# however that the data ID is not necessarily changed for topology
+# changes, so it is necessary to also compare topology data IDs in order
+# to be absolutely sure that two attributes sharing the same data ID
+# represent the same data (taking into account defragmentation).
 
 def convert_report(report):
     for k in [
@@ -12,8 +18,27 @@ def convert_report(report):
     ]:
         tmp = array.array("L")
         tmp.frombytes(report[k])
+        assert len(tmp) == report["num_pages"]
         del report[k]
         report[k] = tmp
+
+    for k in [
+        "temporary_bits",
+        "active_bits",
+    ]:
+        tmp = array.array("I")
+        tmp.frombytes(report[k])
+        assert len(tmp) == report["num_pages"] * 32
+        del report[k]
+        report[k] = tmp
+
+    for attrib, stats in report["attrib_stats"].items():
+        if stats["constant_pages"]:
+            tmp = array.array("L")
+            tmp.frombytes(stats["constant_pages"])
+            del stats["constant_pages"]
+            stats["constant_pages"] = tmp
+
     return report
 
 geo = hou.node("/obj").createNode("geo")
