@@ -57,6 +57,7 @@ struct AttribStats {
     GA_DataId data_id = GA_INVALID_DATAID;
     bool has_page_details = false;
     UT_BitArray constant_pages;
+    UT_BitArray hardened_pages;
 };
 
 // SoA since we are going to create a Python object from each onne of these.
@@ -173,15 +174,21 @@ void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) 
         const GA_ATIString *ati_str = GA_ATIString::cast(attrib);
         if (ati_num || ati_str) {
             attrib_stats.has_page_details = true;
-            //stats.constant_pages = UT_BitArray(out.num_pages);
             attrib_stats.constant_pages.setSize(out.num_pages);
+            attrib_stats.hardened_pages.setSize(out.num_pages);
             if (ati_num) {
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
-                    attrib_stats.constant_pages.setBitFast(cur_page, ati_num->isPageConstant(GA_PageNum(cur_page)));
+                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_num->isPageConstant(GA_PageNum(cur_page)));
+                    const GA_ATINumeric::DataType &data = ati_num->getData();
+                    attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
+                    attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
                 }
             } else {
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
-                    attrib_stats.constant_pages.setBitFast(cur_page, ati_str->isPageConstant(GA_PageNum(cur_page)));
+                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_str->isPageConstant(GA_PageNum(cur_page)));
+                    const GA_ATIString::HandleArrayType &data = ati_str->getHandleData();
+                    attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
+                    attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
                 }
             }
         }
@@ -234,7 +241,7 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         ret = ret && dictThief(d, "active_bits", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.active_bits.getRawArray()), sizeof(PageBits)*stats.num_pages));
         ret = ret && dictThief(d, "temporary_bits", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.temporary_bits.getRawArray()), sizeof(PageBits)*stats.num_pages));
         // We explicit setSize(num_pages) on the UT_BitArrays for each attribute earlier
-        ret = ret && dictThief(d, "constant_page_words", PY_PyLong_FromLongLong(UT_BitArray::numWords(stats.num_pages)));
+        ret = ret && dictThief(d, "page_words", PY_PyLong_FromLongLong(UT_BitArray::numWords(stats.num_pages)));
 
         PY_PyObject *ad = PY_PyDict_New();
         for (exint i = 0; i < stats.attrib_stats.size(); ++i) {
@@ -249,8 +256,15 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
                                     sizeof(UT_BitArray::BlockType) * UT_BitArray::numWords(astats.constant_pages.size())
                                 )
                 );
+                dictThief(d_astats, "hardened_pages", 
+                PY_Py_BuildValue("y#",
+                                    reinterpret_cast<const char *>(astats.hardened_pages.data()),
+                                    sizeof(UT_BitArray::BlockType) * UT_BitArray::numWords(astats.hardened_pages.size())
+                                )
+                );
             } else {
                 dictThief(d_astats, "constant_pages", PY_Py_None());
+                dictThief(d_astats, "hardened_pages", PY_Py_None());
             }
             dictThief(ad, astats.name.c_str(), d_astats);
         }
