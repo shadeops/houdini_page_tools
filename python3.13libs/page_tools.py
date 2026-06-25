@@ -1,30 +1,38 @@
+import array
+import pathlib
+
 import hou
-import os
-from pathlib import Path
 
 def build_extensions():
     import inlinecpp
     print("Installing inlinecpp extensions")
     def get_C_src(name):
-        with open(f"{Path(__file__).parent}/cpp_sources/{name}.C", "r") as f:
+        with open(f"{pathlib.Path(__file__).parent}/cpp_sources/{name}.C", "r") as f:
             return f.read()
 
-    inlinecpp.extendClass(
-        hou.Geometry,
+    # There is a bug in inlinecpp.extendClass, so we need to create a library
+    # and extend it ourselves.
+    page_tools_mod = inlinecpp.createLibrary(
         "page_tools",
-        includes="#include <iostream>",
+        includes="""
+#include <iostream>
+#include <GU/GU_Detail.h>
+""",
         function_sources=[
-            get_C_src("attrib_report"),
             get_C_src("compress_pages"),
             get_C_src("defrag_geo"),
-            get_C_src("page_inspection"),
         ],
     )
 
+    def _make_wrapper(function):
+        def _CPPFunctionWrapper(*args, **kwargs):
+            return function(*args, **kwargs)
+        return _CPPFunctionWrapper
+    for function in page_tools_mod._functions:
+        setattr(hou.Geometry, function.name, _make_wrapper(function))
 
-import array
-import shadeops_hom
 
+#import shadeops_hom
 def prep_page_report(report):
 
     for k in (
