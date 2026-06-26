@@ -51,7 +51,6 @@ def prep_page_report(report):
 
     for k in (
         "full_block_ranges",
-        "indices",
     ):
         if k not in report:
             continue
@@ -164,8 +163,4 @@ def page_report_to_attribs(geo, report, skip_public=False, skip_private=True, sk
     if "full_block_ranges" in report:
         full_block_ranges_atr = geo.addArrayAttrib(hou.attribType.Global, "full_block_ranges", hou.attribData.Int, 2)
         geo.setGlobalAttribValue(full_block_ranges_atr, report["full_block_ranges"])
-
-    if "indices" in report:
-        indices_atr = geo.addArrayAttrib(hou.attribType.Global, "indices", hou.attribData.Int, 1)
-        geo.setGlobalAttribValue(indices_atr, report["indices"])
 

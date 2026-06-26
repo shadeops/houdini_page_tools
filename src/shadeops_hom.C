@@ -59,7 +59,6 @@ struct AttribStats {
 };
 
 struct PageStatOptions {
-    int get_indices = 0;
     int get_block_ranges = 0;
 };
 
@@ -78,7 +77,6 @@ struct OwnerStats {
     UT_Array<GA_Size> active;
     UT_Array<GA_Size> temporary;
     UT_Array<GA_Size> vacant;
-    UT_Array<GA_Index> indices;
     UT_Array<PageBits> active_bits;
     UT_Array<PageBits> temporary_bits;
     UT_Array<AttribStats> attrib_stats;
@@ -137,10 +135,6 @@ void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &
     out.active_bits.setSize(out.num_pages);
     out.temporary_bits.setSize(out.num_pages);
 
-    if (opts.get_indices) {
-        out.indices.setSize(index_map.offsetSize());
-    }
-
     for (GA_Size cur_page = 0; cur_page < num_pages; ++cur_page) {
 
         const GA_Size page_start = cur_page << GA_PAGE_BITS;
@@ -159,15 +153,10 @@ void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &
         for (GA_Size i = page_start; i < SYSmin(page_end, out.offset_size); ++i) {
             const GA_Offset offset(i);
 
-            if (opts.get_indices) out.indices[offset] = -1;
-
             const int index_in_page = i - page_start;
             if (index_map.isOffsetActive(offset)) {
                 setPageBit(active_bits.bits, index_in_page);
                 active += 1;
-                if (opts.get_indices) {
-                    out.indices[offset] = index_map.indexFromOffset(offset);
-                }
             } else if (index_map.isOffsetTransient(offset)) {
                 setPageBit(temporary_bits.bits, index_in_page);
                 temporary += 1;
@@ -240,7 +229,7 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
     PageStatOptions stat_options;
     const char *sop_path = nullptr;
     const char *attrib_owner = nullptr;
-    if (!PY_PyArg_ParseTuple(args, "ss|pp", &sop_path, &attrib_owner, &stat_options.get_indices, &stat_options.get_block_ranges)) PY_Py_RETURN_NONE;
+    if (!PY_PyArg_ParseTuple(args, "ss|pp", &sop_path, &attrib_owner, &stat_options.get_block_ranges)) PY_Py_RETURN_NONE;
     if (!sop_path) return nullptr;
     if (!attrib_owner) return nullptr;
     try {
@@ -268,9 +257,6 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         ret = ret && dictThief(d, "temporary_bits", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.temporary_bits.getRawArray()), sizeof(PageBits)*stats.num_pages));
         if (stat_options.get_block_ranges) {
             ret = ret && dictThief(d, "full_block_ranges", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.full_block_ranges.getRawArray()), sizeof(StartStop)*stats.full_block_ranges.size()));
-        }
-        if (stat_options.get_indices) {
-            ret = ret && dictThief(d, "indices", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.indices.getRawArray()), sizeof(GA_Index)*stats.indices.size()));
         }
         // We explicit setSize(num_pages) on the UT_BitArrays for each attribute earlier
         ret = ret && dictThief(d, "page_words", PY_PyLong_FromLongLong(UT_BitArray::numWords(stats.num_pages)));
