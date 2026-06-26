@@ -35,21 +35,35 @@ def build_extensions():
 #import shadeops_hom
 def prep_page_report(report):
 
+    assert array.array("l").itemsize == 8
+    assert array.array("I").itemsize == 4
+
     for k in (
         "num_active_in_page",
         "num_vacant_in_page",
         "num_temporary_in_page",
     ):
-        tmp = array.array("L")
+        tmp = array.array("l")
         tmp.frombytes(report[k])
         assert len(tmp) == report["num_pages"]
         del report[k]
         report[k] = tmp
 
-    for k in [
+    for k in (
+        "full_block_ranges",
+        "indices",
+    ):
+        if k not in report:
+            continue
+        tmp = array.array("l")
+        tmp.frombytes(report[k])
+        del report[k]
+        report[k] = tmp
+
+    for k in (
         "temporary_bits",
         "active_bits",
-    ]:
+    ):
         tmp = array.array("I")
         tmp.frombytes(report[k])
         assert len(tmp) == report["num_pages"] * 32
@@ -146,4 +160,12 @@ def page_report_to_attribs(geo, report, skip_public=False, skip_private=True, sk
 
     page_words_atr = geo.addAttrib(hou.attribType.Global, "page_words", 0)
     geo.setGlobalAttribValue(page_words_atr, report["page_words"]*2)
+
+    if "full_block_ranges" in report:
+        full_block_ranges_atr = geo.addArrayAttrib(hou.attribType.Global, "full_block_ranges", hou.attribData.Int, 2)
+        geo.setGlobalAttribValue(full_block_ranges_atr, report["full_block_ranges"])
+
+    if "indices" in report:
+        indices_atr = geo.addArrayAttrib(hou.attribType.Global, "indices", hou.attribData.Int, 1)
+        geo.setGlobalAttribValue(indices_atr, report["indices"])
 

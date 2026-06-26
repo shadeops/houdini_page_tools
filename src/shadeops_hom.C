@@ -24,7 +24,7 @@ createHouException(
     exception_class = nullptr;
     PY_AutoObject hou_module(PY_PyImport_ImportModule("hou"));
     PY_PyObject *hou_module_dict = PY_PyModule_GetDict(hou_module);
-    
+
     exception_class = PY_PyDict_GetItemString(hou_module_dict, exception_class_name);
     if (!exception_class) {
         PY_PyErr_SetString(PY_PyExc_RuntimeError(), "Could not find exception class in hou module");
@@ -45,8 +45,6 @@ GA_AttributeOwner toAttribOwner(const char *owner_str) {
     return GA_ATTRIB_INVALID;
 }
 
-
-
 struct PageBits {
     uint32_t bits[32] = {0};
 };
@@ -60,6 +58,16 @@ struct AttribStats {
     UT_BitArray hardened_pages;
 };
 
+struct PageStatOptions {
+    int get_indices = 0;
+    int get_block_ranges = 0;
+};
+
+struct StartStop {
+    GA_Offset start = 0;
+    GA_Offset stop = -1;
+};
+
 // SoA since we are going to create a Python object from each onne of these.
 struct OwnerStats {
     GA_Size offset_size = 0;
@@ -70,9 +78,11 @@ struct OwnerStats {
     UT_Array<GA_Size> active;
     UT_Array<GA_Size> temporary;
     UT_Array<GA_Size> vacant;
+    UT_Array<GA_Index> indices;
     UT_Array<PageBits> active_bits;
     UT_Array<PageBits> temporary_bits;
     UT_Array<AttribStats> attrib_stats;
+    UT_Array<StartStop> full_block_ranges;
 };
 
 // uint32_t[32]
@@ -93,7 +103,7 @@ scopeName(GA_AttributeScope scope)
     }
 }
 
-void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) {
+void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &opts, OwnerStats &out) {
     HOM_AutoLock hom_lock;
 
     GA_AttributeOwner owner = toAttribOwner(owner_str);
@@ -127,6 +137,10 @@ void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) 
     out.active_bits.setSize(out.num_pages);
     out.temporary_bits.setSize(out.num_pages);
 
+    if (opts.get_indices) {
+        out.indices.setSize(index_map.offsetSize());
+    }
+
     for (GA_Size cur_page = 0; cur_page < num_pages; ++cur_page) {
 
         const GA_Size page_start = cur_page << GA_PAGE_BITS;
@@ -144,10 +158,16 @@ void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) 
 
         for (GA_Size i = page_start; i < SYSmin(page_end, out.offset_size); ++i) {
             const GA_Offset offset(i);
+
+            if (opts.get_indices) out.indices[offset] = -1;
+
             const int index_in_page = i - page_start;
             if (index_map.isOffsetActive(offset)) {
                 setPageBit(active_bits.bits, index_in_page);
                 active += 1;
+                if (opts.get_indices) {
+                    out.indices[offset] = index_map.indexFromOffset(offset);
+                }
             } else if (index_map.isOffsetTransient(offset)) {
                 setPageBit(temporary_bits.bits, index_in_page);
                 temporary += 1;
@@ -194,13 +214,18 @@ void GeoPageStats(const char *sop_path, const char *owner_str, OwnerStats &out) 
         }
         out.attrib_stats.append(std::move(attrib_stats));
 
-    //    GA_Offset start, end;
-    //    for (GA_Iterator it(gdp->getPointRange()); it.blockAdvance(start, end); ) {
-    //        std::cout << start << " " << end << std::endl;
-    //    }
     }
 
-    return; 
+
+    if (opts.get_block_ranges) {
+        GA_Range range(index_map);
+        GA_Offset start, end;
+        for (GA_Iterator it(range); it.fullBlockAdvance(start, end); ) {
+                out.full_block_ranges.append(StartStop{start,end});
+        }
+    }
+
+    return;
 }
 
 bool dictThief(PY_PyObject *d, const char *key, PY_PyObject *val) {
@@ -212,14 +237,15 @@ bool dictThief(PY_PyObject *d, const char *key, PY_PyObject *val) {
 
 PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
 
+    PageStatOptions stat_options;
     const char *sop_path = nullptr;
     const char *attrib_owner = nullptr;
-    if (!PY_PyArg_ParseTuple(args, "ss", &sop_path, &attrib_owner)) PY_Py_RETURN_NONE;
+    if (!PY_PyArg_ParseTuple(args, "ss|pp", &sop_path, &attrib_owner, &stat_options.get_indices, &stat_options.get_block_ranges)) PY_Py_RETURN_NONE;
     if (!sop_path) return nullptr;
     if (!attrib_owner) return nullptr;
     try {
         OwnerStats stats;
-        GeoPageStats(sop_path, attrib_owner, stats);
+        GeoPageStats(sop_path, attrib_owner, stat_options, stats);
 
         PY_PyObject *d = PY_PyDict_New();
         if (!d) return nullptr;
@@ -234,12 +260,18 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         // PY_PyBytes_FromStringAndSize is not in Houdini 22's HDK
         //ret = ret && dictThief(d, "num_active_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.active.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         //ret = ret && dictThief(d, "num_temporary_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.temporary.getRawArray()), sizeof(GA_Size)*stats.num_pages));
-        //ret = ret && dictThief(d, "num_vacant_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.vacant.getRawArray()), sizeof(GA_Size)*stats.num_pages));
+        //ret = ret &&  ictThief(d, "num_vacant_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.vacant.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "num_active_in_page", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.active.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "num_temporary_in_page", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.temporary.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "num_vacant_in_page", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.vacant.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "active_bits", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.active_bits.getRawArray()), sizeof(PageBits)*stats.num_pages));
         ret = ret && dictThief(d, "temporary_bits", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.temporary_bits.getRawArray()), sizeof(PageBits)*stats.num_pages));
+        if (stat_options.get_block_ranges) {
+            ret = ret && dictThief(d, "full_block_ranges", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.full_block_ranges.getRawArray()), sizeof(StartStop)*stats.full_block_ranges.size()));
+        }
+        if (stat_options.get_indices) {
+            ret = ret && dictThief(d, "indices", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.indices.getRawArray()), sizeof(GA_Index)*stats.indices.size()));
+        }
         // We explicit setSize(num_pages) on the UT_BitArrays for each attribute earlier
         ret = ret && dictThief(d, "page_words", PY_PyLong_FromLongLong(UT_BitArray::numWords(stats.num_pages)));
 
@@ -250,13 +282,13 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
             dictThief(d_astats, "scope", PY_PyString_FromString(astats.scope));
             dictThief(d_astats, "data_id", PY_PyLong_FromLongLong(astats.data_id));
             if (astats.has_page_details) {
-                dictThief(d_astats, "constant_pages", 
+                dictThief(d_astats, "constant_pages",
                 PY_Py_BuildValue("y#",
                                     reinterpret_cast<const char *>(astats.constant_pages.data()),
                                     sizeof(UT_BitArray::BlockType) * UT_BitArray::numWords(astats.constant_pages.size())
                                 )
                 );
-                dictThief(d_astats, "hardened_pages", 
+                dictThief(d_astats, "hardened_pages",
                 PY_Py_BuildValue("y#",
                                     reinterpret_cast<const char *>(astats.hardened_pages.data()),
                                     sizeof(UT_BitArray::BlockType) * UT_BitArray::numWords(astats.hardened_pages.size())
