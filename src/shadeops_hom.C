@@ -179,9 +179,16 @@ void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &
         attrib_stats.data_id = attrib->getDataId();
         attrib_stats.scope = scopeName(attrib->getScope());
 
+        // Not all child classes of GA_Attribute expose APIs for fetching constant page status
+        // (most likely not supported(?). For example GA_ATINumericArray and GA_BlobArray don't
+        // provide access.
         const GA_ATINumeric *ati_num = GA_ATINumeric::cast(attrib);
         const GA_ATIString *ati_str = GA_ATIString::cast(attrib);
-        if (ati_num || ati_str) {
+        const GA_ATIDict *ati_dict = GA_ATIDict::cast(attrib);
+        const GA_ATITopology *ati_topo = GA_ATITopology::cast(attrib);
+        const GA_ATIGroupBool *ati_group = GA_ElementGroup::cast(attrib);
+
+        if (ati_num || ati_str || ati_dict || ati_topo || ati_group) {
             attrib_stats.has_page_details = true;
             attrib_stats.constant_pages.setSize(out.num_pages);
             attrib_stats.hardened_pages.setSize(out.num_pages);
@@ -192,12 +199,33 @@ void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &
                     attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
                     attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
                 }
-            } else {
+            } else if (ati_topo) {
+                for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
+                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_num->isPageConstant(GA_PageNum(cur_page)));
+                    const GA_ATITopology::DataType &data = ati_topo->getData();
+                    attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
+                    attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
+                }
+            } else if (ati_str) {
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
                     //attrib_stats.constant_pages.setBitFast(cur_page, ati_str->isPageConstant(GA_PageNum(cur_page)));
                     const GA_ATIString::HandleArrayType &data = ati_str->getHandleData();
                     attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
                     attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
+                }
+            } else if (ati_dict) {
+                for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
+                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_str->isPageConstant(GA_PageNum(cur_page)));
+                    const GA_ATIDict::HandleArrayType &data = ati_dict->getHandleData();
+                    attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
+                    attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
+                }
+            } else if (ati_group) {
+                for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
+                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_num->isPageConstant(GA_PageNum(cur_page)));
+                    attrib_stats.constant_pages.setBitFast(cur_page, ati_group->isPageConstant(GA_PageNum(cur_page)));
+                    // No API for querying if the page is hardened.
+                    attrib_stats.hardened_pages.setBitFast(cur_page, 0);
                 }
             }
         }

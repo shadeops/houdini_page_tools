@@ -6,12 +6,21 @@
         "from": "python_page_report",
         "from_index": 0,
         "to_index": 0
+      },
+      {
+        "from": "options",
+        "from_index": 0,
+        "to_index": 1
       }
     ],
     "position": [
       -7.37,
-      -12.15
+      -15.12
     ],
+    "flags": {
+      "display": true,
+      "render": true
+    },
     "children": {
       "color_page_grid": {
         "type": "attribwrangle",
@@ -28,8 +37,8 @@
           }
         ],
         "position": [
-          1.45,
-          -14.85
+          0.13,
+          -22.15
         ],
         "parms": {
           "class": "primitive",
@@ -56,7 +65,7 @@
         ],
         "parms": {
           "class": "detail",
-          "snippet": "int pages = detail(1, \"num_pages\");\n\ni@columns = max(5,int(ceil(sqrt(pages))));\ni@rows = int(ceil(float(pages)/@columns));\ni@attrib_spacers = detail(1, \"attribs_reported\");\n\n@col_pad = 0.1;\n@row_pad = 0.1 + 0.125 * i@attrib_spacers;"
+          "snippet": "int pages = detail(1, \"num_pages\");\n\ni@columns = max(5,int(ceil(sqrt(pages))));\ni@rows = int(ceil(float(pages)/@columns));\ni@attrib_spacers = detail(1, \"attribs_reported\");\n\n@col_pad = 0.1;\n@row_pad = 0.05 + 0.15 * i@attrib_spacers;"
         }
       },
       "align_page_grids": {
@@ -362,7 +371,7 @@
           "snippet": "string attrib_names[] = detail(1, \"attrib_names\");\n\nstring attrib_name = s[]@opinput1_attrib_names[i@opinput2_iteration];\n\nfloat font_size = 0.075;\n\n@font_offset = font_size*2*i@opinput2_iteration;\n\nd@parms = dict();\n@parms[\"text\"] = sprintf(\"%s    [%i]\", attrib_name, i[]@opinput1_attrib_ids[i@opinput2_iteration]);\n@parms[\"t\"] = set(-0.55, 0 , 0.55 + @font_offset);\n@parms[\"fontsize\"] = font_size;\n\n"
         }
       },
-      "merge3": {
+      "combine_all": {
         "type": "merge",
         "inputs": [
           {
@@ -377,8 +386,8 @@
           }
         ],
         "position": [
-          -0.55,
-          -19.12
+          -0.18,
+          -29.01
         ]
       },
       "copy_attrib_labels": {
@@ -442,14 +451,14 @@
         "type": "compile_end",
         "inputs": [
           {
-            "from": "merge3",
+            "from": "combine_all",
             "from_index": 0,
             "to_index": 0
           }
         ],
         "position": [
-          -0.55,
-          -20.32
+          -0.18,
+          -30.21
         ],
         "color": [
           0.75,
@@ -460,10 +469,10 @@
           "colordefault": false
         },
         "parms": {
-          "primarypath": "../compile_begin1"
+          "primarypath": "../compile_begin_input"
         }
       },
-      "compile_begin1": {
+      "compile_begin_input": {
         "type": "compile_begin",
         "inputs": [
           {
@@ -493,7 +502,7 @@
         "type": "null",
         "inputs": [
           {
-            "from": "compile_begin1",
+            "from": "compile_begin_input",
             "from_index": 0,
             "to_index": 0
           }
@@ -796,7 +805,7 @@
           "groupname": "labels"
         }
       },
-      "merge6": {
+      "merge_labels_and_bars": {
         "type": "merge",
         "inputs": [
           {
@@ -812,7 +821,7 @@
         ],
         "position": [
           -4.55,
-          -16.12
+          -16.24
         ]
       },
       "foreach_input_page_bars": {
@@ -975,14 +984,14 @@
         "type": "groupdelete",
         "inputs": [
           {
-            "from": "color_page_grid",
+            "from": "has_full_block_ranges",
             "from_index": 0,
             "to_index": 0
           }
         ],
         "position": [
-          1.45,
-          -15.85
+          0.13,
+          -27.76
         ],
         "flags": {
           "highlight": true
@@ -999,14 +1008,14 @@
         "type": "groupdelete",
         "inputs": [
           {
-            "from": "merge6",
+            "from": "merge_labels_and_bars",
             "from_index": 0,
             "to_index": 0
           }
         ],
         "position": [
-          -2.55,
-          -17.13
+          -4.55,
+          -17.54
         ],
         "flags": {
           "highlight": true
@@ -1029,8 +1038,8 @@
           }
         ],
         "position": [
-          -2.42,
-          -18.13
+          -4.42,
+          -18.54
         ],
         "parms": {
           "primdel": "attrib_index"
@@ -1145,8 +1154,8 @@
           }
         ],
         "position": [
-          -0.55,
-          -21.98
+          -0.18,
+          -31.86
         ],
         "flags": {
           "display": true,
@@ -1156,11 +1165,389 @@
           "outputidx": 0
         }
       },
+      "num_blocks": {
+        "type": "attribwrangle",
+        "inputs": [
+          {
+            "from": "page_report_block",
+            "from_index": 0,
+            "to_index": 0
+          }
+        ],
+        "position": [
+          10.14,
+          -19.71
+        ],
+        "parms": {
+          "class": "detail",
+          "snippet": "d@parms = dict();\n@parms[\"npts\"] = len(i[]@full_block_ranges)/2;\n"
+        }
+      },
+      "block_npts_override": {
+        "type": "pointgenerate",
+        "position": [
+          10.14,
+          -21.06
+        ],
+        "parms": {
+          "spare_input0": "../num_blocks",
+          "spare_parminputindex": -1
+        },
+        "parmtemplates": [
+          {
+            "insert_after": "detailstocopy",
+            "parmtemplates": {
+              "spare_input0": {
+                "type": "operator_path",
+                "label": "Spare Input 0",
+                "tags": {
+                  "cook_dependent": "1",
+                  "opfilter": "!!SOP!!",
+                  "oprelative": "."
+                },
+                "script_callback_language": "hscript",
+                "help": "Refer to this in expressions as -1, such as: npoints(-1)",
+                "menu_type": "normal"
+              },
+              "spare_parminputindex": {
+                "type": "integer",
+                "label": "Parameter Override",
+                "tags": {
+                  "cook_dependent": "1",
+                  "script_action": "\ndef unlockAll(node):\n    for parm in node.parmTuples():\n        parm.lock(False)\n\ndef updateLockValues(node):\n    ## Determine our parameter override, if any.\n    overrideparm = node.parm('spare_parminputindex')\n    if overrideparm is None:\n        return\n    overrideidx = overrideparm.evalAsInt()\n    if overrideidx >= 0:\n        unlockAll(node)\n        return\n    overrideidx = - overrideidx - 1\n    ## Get the wired input, if any.\n    inputparmname = 'spare_input' + str(overrideidx)\n    inputparm = node.parm(inputparmname)\n    if inputparm is None:\n        unlockAll(node)\n        return\n    inputpath = inputparm.evalAsString()\n    inputnode = node.node(inputpath)\n    if inputnode is None:\n        unlockAll(node)\n        return\n    ## Determine if there is geometry and if it has an override dictionary\n    if not isinstance(inputnode, hou.SopNode):\n        return\n    geo = inputnode.geometry()\n    if geo is None:\n        return\n    parmattrib = geo.findGlobalAttrib('parms')\n    if parmattrib is None:\n        return\n    if parmattrib.dataType() != hou.attribData.Dict:\n        return\n    ## correct override of dictionary type, fetch it.\n    parmdict = geo.dictAttribValue('parms')\n\n    ## Ensure all is unlocked\n    unlockAll(node)\n\n    ## Copy values over\n    try:\n        node.setParms(parmdict)\n    except hou.Error:\n        pass\n\n    ## Lock each matching parm\n    for parm in node.parmTuples():\n        if parm.name() in parmdict:\n            parm.lock(True)\n        else:\n            parm.lock(False)\n\nnode = kwargs['node']\nupdateLockValues(node)\n",
+                  "script_action_help": "Lock all parameters that correspond to currently overriding parameters, and unlock those that don't correspond.",
+                  "script_action_icon": "TOOLS_lock_parm_override"
+                },
+                "script_callback_language": "hscript",
+                "help": "The parms detail dictionary attribute on this spare input will override this node's parameters during cook.",
+                "menu_type": "normal",
+                "menu_use_token": true,
+                "item_generator_script": "\nresult = [ '0', 'No Override' ]\nidx = 0\nnode = kwargs['node']\nwhile True:\n    parmname = 'spare_input' + str(idx)\n    if node.parm(parmname) is None:\n        break\n    label = 'Spare Input ' + str(idx)\n    result += [ str(- idx - 1), label ]\n    idx = idx + 1\nreturn result"
+              }
+            }
+          }
+        ]
+      },
+      "foreach_block_end": {
+        "type": "block_end",
+        "inputs": [
+          {
+            "from": "color_prims_by_block",
+            "from_index": 0,
+            "to_index": 0
+          },
+          {
+            "from": "block_npts_override",
+            "from_index": 0,
+            "to_index": 1
+          }
+        ],
+        "position": [
+          3.14,
+          -22.15
+        ],
+        "color": [
+          0.75,
+          0.4,
+          0
+        ],
+        "flags": {
+          "colordefault": false
+        },
+        "parms": {
+          "useattrib": false,
+          "blockpath": "../foreach_block_feedback"
+        }
+      },
+      "foreach_block_feedback": {
+        "type": "block_begin",
+        "inputs": [
+          {
+            "from": "align_page_grids",
+            "from_index": 0,
+            "to_index": 0
+          }
+        ],
+        "position": [
+          2.84,
+          -17.78
+        ],
+        "color": [
+          0.75,
+          0.4,
+          0
+        ],
+        "flags": {
+          "colordefault": false
+        },
+        "parms": {
+          "blockpath": "../foreach_block_end"
+        }
+      },
+      "foreach_block_metadata": {
+        "type": "block_begin",
+        "position": [
+          3.89,
+          -18.56
+        ],
+        "color": [
+          0.75,
+          0.4,
+          0
+        ],
+        "flags": {
+          "colordefault": false
+        },
+        "parms": {
+          "method": "metadata",
+          "blockpath": "../foreach_block_end"
+        }
+      },
+      "group_override": {
+        "type": "attribwrangle",
+        "inputs": [
+          {
+            "from": "foreach_block_metadata",
+            "from_index": 0,
+            "to_index": 0
+          },
+          {
+            "from": "foreach_block_input",
+            "from_index": 0,
+            "to_index": 1
+          }
+        ],
+        "position": [
+          5.21,
+          -19.91
+        ],
+        "parms": {
+          "class": "detail",
+          "snippet": "int start = i[]@opinput1_full_block_ranges[i@iteration*2];\nint end = i[]@opinput1_full_block_ranges[i@iteration*2+1]-1;\n\nstring group = sprintf(\"%i-%i\", start, end);\n\nd@parms = dict();\n@parms[\"bindgroup\"] = group;"
+        }
+      },
+      "color_prims_by_block": {
+        "type": "attribwranglecore",
+        "inputs": [
+          {
+            "from": "foreach_block_feedback",
+            "from_index": 0,
+            "to_index": 0
+          },
+          {
+            "from": "foreach_block_metadata",
+            "from_index": 0,
+            "to_index": 1
+          }
+        ],
+        "position": [
+          3.13,
+          -21.13
+        ],
+        "parms": {
+          "bindgrouptype": "prims",
+          "bindclass": "primitive",
+          "vexsrc": "snippet",
+          "vexsnippet": "v@Cd = random_sobol({100,100,100}, i@opinput1_iteration);",
+          "spare_input0": "../group_override",
+          "spare_parminputindex": -1
+        },
+        "parmtemplates": [
+          {
+            "insert_after": "stdswitcher_1",
+            "parmtemplates": {
+              "spare_input0": {
+                "type": "operator_path",
+                "label": "Spare Input 0",
+                "tags": {
+                  "cook_dependent": "1",
+                  "opfilter": "!!SOP!!",
+                  "oprelative": "."
+                },
+                "script_callback_language": "hscript",
+                "help": "Refer to this in expressions as -1, such as: npoints(-1)",
+                "menu_type": "normal"
+              },
+              "spare_parminputindex": {
+                "type": "integer",
+                "label": "Parameter Override",
+                "tags": {
+                  "cook_dependent": "1",
+                  "script_action": "\ndef unlockAll(node):\n    for parm in node.parmTuples():\n        parm.lock(False)\n\ndef updateLockValues(node):\n    ## Determine our parameter override, if any.\n    overrideparm = node.parm('spare_parminputindex')\n    if overrideparm is None:\n        return\n    overrideidx = overrideparm.evalAsInt()\n    if overrideidx >= 0:\n        unlockAll(node)\n        return\n    overrideidx = - overrideidx - 1\n    ## Get the wired input, if any.\n    inputparmname = 'spare_input' + str(overrideidx)\n    inputparm = node.parm(inputparmname)\n    if inputparm is None:\n        unlockAll(node)\n        return\n    inputpath = inputparm.evalAsString()\n    inputnode = node.node(inputpath)\n    if inputnode is None:\n        unlockAll(node)\n        return\n    ## Determine if there is geometry and if it has an override dictionary\n    if not isinstance(inputnode, hou.SopNode):\n        return\n    geo = inputnode.geometry()\n    if geo is None:\n        return\n    parmattrib = geo.findGlobalAttrib('parms')\n    if parmattrib is None:\n        return\n    if parmattrib.dataType() != hou.attribData.Dict:\n        return\n    ## correct override of dictionary type, fetch it.\n    parmdict = geo.dictAttribValue('parms')\n\n    ## Ensure all is unlocked\n    unlockAll(node)\n\n    ## Copy values over\n    try:\n        node.setParms(parmdict)\n    except hou.Error:\n        pass\n\n    ## Lock each matching parm\n    for parm in node.parmTuples():\n        if parm.name() in parmdict:\n            parm.lock(True)\n        else:\n            parm.lock(False)\n\nnode = kwargs['node']\nupdateLockValues(node)\n",
+                  "script_action_help": "Lock all parameters that correspond to currently overriding parameters, and unlock those that don't correspond.",
+                  "script_action_icon": "TOOLS_lock_parm_override"
+                },
+                "script_callback_language": "hscript",
+                "help": "The parms detail dictionary attribute on this spare input will override this node's parameters during cook.",
+                "menu_type": "normal",
+                "menu_use_token": true,
+                "item_generator_script": "\nresult = [ '0', 'No Override' ]\nidx = 0\nnode = kwargs['node']\nwhile True:\n    parmname = 'spare_input' + str(idx)\n    if node.parm(parmname) is None:\n        break\n    label = 'Spare Input ' + str(idx)\n    result += [ str(- idx - 1), label ]\n    idx = idx + 1\nreturn result"
+              }
+            }
+          }
+        ]
+      },
+      "vis_active_or_blocks": {
+        "type": "switchif",
+        "inputs": [
+          {
+            "from": "color_page_grid",
+            "from_index": 0,
+            "to_index": 0
+          },
+          {
+            "from": "foreach_block_end",
+            "from_index": 0,
+            "to_index": 1
+          }
+        ],
+        "position": [
+          1.5,
+          -24.12
+        ],
+        "parms": {
+          "testinput": "spare",
+          "tests": [
+            {
+              "type#": "attribval",
+              "attribowner#": "detail",
+              "attributes#": "display_blocks",
+              "attribfloatcomp#": "nequal"
+            }
+          ],
+          "spare_input0": "../compile_begin_parms"
+        },
+        "parmtemplates": [
+          {
+            "insert_after": "tests",
+            "parmtemplates": {
+              "spare_input0": {
+                "type": "operator_path",
+                "label": "Spare Input 0",
+                "tags": {
+                  "opfilter": "!!SOP!!",
+                  "oprelative": "."
+                },
+                "script_callback_language": "hscript",
+                "help": "Refer to this in expressions as -1, such as: npoints(-1)",
+                "menu_type": "normal"
+              }
+            }
+          }
+        ]
+      },
+      "foreach_block_input": {
+        "type": "block_begin",
+        "inputs": [
+          {
+            "from": "page_report_block",
+            "from_index": 0,
+            "to_index": 0
+          }
+        ],
+        "position": [
+          6.55,
+          -17.78
+        ],
+        "color": [
+          0.75,
+          0.4,
+          0
+        ],
+        "flags": {
+          "colordefault": false
+        },
+        "parms": {
+          "method": "input",
+          "blockpath": "../foreach_block_end"
+        }
+      },
+      "compile_begin_parms": {
+        "type": "compile_begin",
+        "inputs": [
+          {
+            "from": "2",
+            "from_index": 0,
+            "to_index": 0
+          }
+        ],
+        "position": [
+          4.23,
+          6.11
+        ],
+        "color": [
+          0.75,
+          0.75,
+          0
+        ],
+        "flags": {
+          "colordefault": false
+        },
+        "parms": {
+          "blockpath": "../compile_end1",
+          "name": "parms"
+        }
+      },
+      "has_full_block_ranges": {
+        "type": "switchif",
+        "inputs": [
+          {
+            "from": "color_page_grid",
+            "from_index": 0,
+            "to_index": 0
+          },
+          {
+            "from": "vis_active_or_blocks",
+            "from_index": 0,
+            "to_index": 1
+          }
+        ],
+        "position": [
+          0.13,
+          -25.33
+        ],
+        "parms": {
+          "testinput": "spare",
+          "tests": [
+            {
+              "type#": "attrib",
+              "attribowner#": "detail",
+              "attributes#": "full_block_ranges"
+            }
+          ],
+          "spare_input0": "../page_report_block"
+        },
+        "parmtemplates": [
+          {
+            "insert_after": "tests",
+            "parmtemplates": {
+              "spare_input0": {
+                "type": "operator_path",
+                "label": "Spare Input 0",
+                "tags": {
+                  "opfilter": "!!SOP!!",
+                  "oprelative": "."
+                },
+                "script_callback_language": "hscript",
+                "help": "Refer to this in expressions as -1, such as: npoints(-1)",
+                "menu_type": "normal"
+              }
+            }
+          }
+        ]
+      },
       "1": {
         "type": "SubnetIndirectInput",
         "position": [
           0,
-          8.03
+          8.92
+        ]
+      },
+      "2": {
+        "type": "SubnetIndirectInput",
+        "position": [
+          4.23,
+          8.92
         ]
       }
     }
