@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <tool name="sop_geo_pages" label="SOP Geo Pages" icon="hicon:/SVGIcons.index?BUTTONS_grid_small.svg">
+    <script scriptType="python"><![CDATA[
+import stateutils
+
+viewer = stateutils.findSceneViewer()
+if viewer.pwd().childTypeCategory() != hou.sopNodeTypeCategory():
+    viewer.setPromptMessage("Select a SOP Node")
+else:
+    viewer.setCurrentState("geo_page_viewer")
+]]></script>
+  </tool>
+
+  <toolshelf name="sop_page_tools" label="SOP Page Tools">
+    <memberTool name="sop_geo_pages"/>
+  </toolshelf>
+
+  <shelfSet name="page_tools_shelf_set" label="SOP Page Shelf">
+    <memberToolshelf name="sop_page_tools"/>
+  </shelfSet>
+</shelfDocument>

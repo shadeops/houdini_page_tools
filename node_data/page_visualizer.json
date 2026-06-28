@@ -17,10 +17,6 @@
       -7.37,
       -15.12
     ],
-    "flags": {
-      "display": true,
-      "render": true
-    },
     "children": {
       "color_page_grid": {
         "type": "attribwrangle",
@@ -451,14 +447,14 @@
         "type": "compile_end",
         "inputs": [
           {
-            "from": "combine_all",
+            "from": "has_pages",
             "from_index": 0,
             "to_index": 0
           }
         ],
         "position": [
           -0.18,
-          -30.21
+          -31.54
         ],
         "color": [
           0.75,
@@ -1155,7 +1151,7 @@
         ],
         "position": [
           -0.18,
-          -31.86
+          -33.2
         ],
         "flags": {
           "display": true,
@@ -1513,6 +1509,50 @@
               "type#": "attrib",
               "attribowner#": "detail",
               "attributes#": "full_block_ranges"
+            }
+          ],
+          "spare_input0": "../page_report_block"
+        },
+        "parmtemplates": [
+          {
+            "insert_after": "tests",
+            "parmtemplates": {
+              "spare_input0": {
+                "type": "operator_path",
+                "label": "Spare Input 0",
+                "tags": {
+                  "opfilter": "!!SOP!!",
+                  "oprelative": "."
+                },
+                "script_callback_language": "hscript",
+                "help": "Refer to this in expressions as -1, such as: npoints(-1)",
+                "menu_type": "normal"
+              }
+            }
+          }
+        ]
+      },
+      "has_pages": {
+        "type": "switchif",
+        "inputs": [
+          {
+            "from": "combine_all",
+            "from_index": 0,
+            "to_index": 1
+          }
+        ],
+        "position": [
+          -0.18,
+          -30.27
+        ],
+        "parms": {
+          "testinput": "spare",
+          "tests": [
+            {
+              "type#": "attribval",
+              "attribowner#": "detail",
+              "attributes#": "num_pages",
+              "attribfloatcomp#": "greater"
             }
           ],
           "spare_input0": "../page_report_block"

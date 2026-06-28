@@ -84,6 +84,13 @@ def prep_page_report(report):
 
 def page_report_to_attribs(geo, report, skip_public=False, skip_private=True, skip_group=True):
 
+    num_pages = geo.addAttrib(hou.attribType.Global, "num_pages", 0)
+    geo.setGlobalAttribValue(num_pages, report["num_pages"])
+
+    if report["num_pages"] == 0:
+        # empty geometry
+        return
+
     prep_page_report(report)
 
     active_bits = geo.addArrayAttrib(hou.attribType.Global, "active_bits", hou.attribData.Int, 32)
@@ -91,9 +98,6 @@ def page_report_to_attribs(geo, report, skip_public=False, skip_private=True, sk
 
     temporary_bits = geo.addArrayAttrib(hou.attribType.Global, "temporary_bits", hou.attribData.Int, 32)
     geo.setGlobalAttribValue(temporary_bits, report["temporary_bits"])
-
-    num_pages = geo.addAttrib(hou.attribType.Global, "num_pages", 0)
-    geo.setGlobalAttribValue(num_pages, report["num_pages"])
 
     offset_size = geo.addAttrib(hou.attribType.Global, "offset_size", 0)
     geo.setGlobalAttribValue(offset_size, report["offset_size"])
