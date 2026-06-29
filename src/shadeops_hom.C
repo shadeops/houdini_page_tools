@@ -54,6 +54,7 @@ struct AttribStats {
     UT_StringHolder scope;
     GA_DataId data_id = GA_INVALID_DATAID;
     bool has_page_details = false;
+    bool is_table_hardened = false;
     UT_BitArray constant_pages;
     UT_BitArray hardened_pages;
 };
@@ -122,7 +123,13 @@ void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &
     const GU_Detail *gdp = gu_handle.gdp();
     const GA_IndexMap &index_map = gdp->getIndexMap(owner);
 
+    //std::cout << gdp->getMemoryUsage(true) << "\t" << gdp->getMemoryUsage(false) << std::endl;
+
+    //std::cout << "\t" << "indexMap" << std::endl;
+    //std::cout << "\t" << index_map.getMemoryUsage(true) << "\t" << index_map.getMemoryUsage(false) << std::endl;
+
     const GA_Size num_pages = GA_Size(index_map.offsetSize() + GA_PAGE_SIZE - 1) >> GA_PAGE_BITS;
+
     out.num_pages = num_pages;
     out.offset_size = index_map.offsetSize();
     out.index_size = index_map.indexSize();
@@ -178,6 +185,9 @@ void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &
         attrib_stats.name = attrib->getFullName();
         attrib_stats.data_id = attrib->getDataId();
         attrib_stats.scope = scopeName(attrib->getScope());
+    
+        //std::cout << "\t" << attrib->getFullName() << std::endl;
+        //std::cout << "\t" << attrib->getMemoryUsage(true) << "\t" << attrib->getMemoryUsage(false) << std::endl;
 
         // Not all child classes of GA_Attribute expose APIs for fetching constant page status
         // (most likely not supported(?). For example GA_ATINumericArray and GA_BlobArray don't
@@ -193,36 +203,39 @@ void GeoPageStats(const char *sop_path, const char *owner_str, PageStatOptions &
             attrib_stats.constant_pages.setSize(out.num_pages);
             attrib_stats.hardened_pages.setSize(out.num_pages);
             if (ati_num) {
+                const GA_ATINumeric::DataType &data = ati_num->getData();
+                attrib_stats.is_table_hardened = data.isTableHardened();
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
+                    // We can get the information for constant pages from the ATI interface, but not if the page is
+                    // hardened or not, so we'll reach for the GA_PageArray methods.
                     //attrib_stats.constant_pages.setBitFast(cur_page, ati_num->isPageConstant(GA_PageNum(cur_page)));
-                    const GA_ATINumeric::DataType &data = ati_num->getData();
                     attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
                     attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
                 }
             } else if (ati_topo) {
+                const GA_ATITopology::DataType &data = ati_topo->getData();
+                attrib_stats.is_table_hardened = data.isTableHardened();
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
-                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_num->isPageConstant(GA_PageNum(cur_page)));
-                    const GA_ATITopology::DataType &data = ati_topo->getData();
                     attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
                     attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
                 }
             } else if (ati_str) {
+                const GA_ATIString::HandleArrayType &data = ati_str->getHandleData();
+                attrib_stats.is_table_hardened = data.isTableHardened();
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
-                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_str->isPageConstant(GA_PageNum(cur_page)));
-                    const GA_ATIString::HandleArrayType &data = ati_str->getHandleData();
                     attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
                     attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
                 }
             } else if (ati_dict) {
+                const GA_ATIDict::HandleArrayType &data = ati_dict->getHandleData();
+                attrib_stats.is_table_hardened = data.isTableHardened();
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
-                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_str->isPageConstant(GA_PageNum(cur_page)));
-                    const GA_ATIDict::HandleArrayType &data = ati_dict->getHandleData();
                     attrib_stats.constant_pages.setBitFast(cur_page, data.isPageConstant(GA_PageNum(cur_page)));
                     attrib_stats.hardened_pages.setBitFast(cur_page, data.isPageHard(GA_PageNum(cur_page)));
                 }
             } else if (ati_group) {
+                // Not backed by a UT_PageArray
                 for (GA_Size cur_page = 0; cur_page < out.num_pages; ++cur_page) {
-                    //attrib_stats.constant_pages.setBitFast(cur_page, ati_num->isPageConstant(GA_PageNum(cur_page)));
                     attrib_stats.constant_pages.setBitFast(cur_page, ati_group->isPageConstant(GA_PageNum(cur_page)));
                     // No API for querying if the page is hardened.
                     attrib_stats.hardened_pages.setBitFast(cur_page, 0);
@@ -277,7 +290,7 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         // PY_PyBytes_FromStringAndSize is not in Houdini 22's HDK
         //ret = ret && dictThief(d, "num_active_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.active.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         //ret = ret && dictThief(d, "num_temporary_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.temporary.getRawArray()), sizeof(GA_Size)*stats.num_pages));
-        //ret = ret &&  ictThief(d, "num_vacant_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.vacant.getRawArray()), sizeof(GA_Size)*stats.num_pages));
+        //ret = ret && dictThief(d, "num_vacant_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.vacant.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "num_active_in_page", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.active.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "num_temporary_in_page", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.temporary.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         ret = ret && dictThief(d, "num_vacant_in_page", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.vacant.getRawArray()), sizeof(GA_Size)*stats.num_pages));
@@ -286,7 +299,7 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         if (stat_options.get_block_ranges) {
             ret = ret && dictThief(d, "full_block_ranges", PY_Py_BuildValue("y#", reinterpret_cast<const char *>(stats.full_block_ranges.getRawArray()), sizeof(StartStop)*stats.full_block_ranges.size()));
         }
-        // We explicit setSize(num_pages) on the UT_BitArrays for each attribute earlier
+        // We explicitly setSize(num_pages) on the UT_BitArrays for each attribute earlier
         ret = ret && dictThief(d, "page_words", PY_PyLong_FromLongLong(UT_BitArray::numWords(stats.num_pages)));
 
         PY_PyObject *ad = PY_PyDict_New();
@@ -295,6 +308,8 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
             PY_PyObject *d_astats = PY_PyDict_New();
             dictThief(d_astats, "scope", PY_PyString_FromString(astats.scope));
             dictThief(d_astats, "data_id", PY_PyLong_FromLongLong(astats.data_id));
+            dictThief(d_astats, "is_table_hardened", astats.is_table_hardened ? PY_Py_True() : PY_Py_False());
+            dictThief(d_astats, "has_page_details", astats.has_page_details ? PY_Py_True() : PY_Py_False());
             if (astats.has_page_details) {
                 dictThief(d_astats, "constant_pages",
                 PY_Py_BuildValue("y#",
