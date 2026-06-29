@@ -82,7 +82,7 @@ def prep_page_report(report):
 
     return report
 
-def page_report_to_attribs(geo, report, skip_public=False, skip_private=True, skip_group=True):
+def page_report_to_attribs(geo, report, include_public=True, include_private=False, include_groups=False):
 
     num_pages = geo.addAttrib(hou.attribType.Global, "num_pages", 0)
     geo.setGlobalAttribValue(num_pages, report["num_pages"])
@@ -123,11 +123,11 @@ def page_report_to_attribs(geo, report, skip_public=False, skip_private=True, sk
     # padding for attributes that don't have page data available
     empty_pages = array.array("I", [0,] * report["page_words"] )
     for k,v in report["attrib_stats"].items():
-        if skip_private and v["scope"] == "private":
+        if not include_private and v["scope"] == "private":
             continue
-        if skip_group and v["scope"] == "group":
+        if not include_groups and v["scope"] == "group":
             continue
-        if skip_public and v["scope"] == "public":
+        if not include_public and v["scope"] == "public":
             continue
         attribs_reported += 1
         attrib_names.append(k)

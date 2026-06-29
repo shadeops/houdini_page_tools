@@ -38,21 +38,10 @@ class SOPPageViewerState(object):
         self.geo.setOutlineOnly(False)
         self.geo.setDrawOutline(False)
 
-    def _update_geo(self):
-        #self.log(f"update_geo {self.node}")
-        if not self.node:
-            return
-        new_geo = hou.Geometry()
-        report_geo = hou.Geometry()
-        #if self.node.needsToCook():
-        #    self.node.cook(force=True)
-        report = shadeops_hom.geo_page_report(self.node.path(), "point", True)
-        page_tools.page_report_to_attribs(report_geo, report, False, True, True)
-        self.invokegraph.execute(new_geo, [self.graph_geo, report_geo, self.opts_geo])
-        report_geo.clear()
-        self.geo.setGeometry(new_geo)
-        self.geo.show(True)
-        self.scene_viewer.curViewport().draw()
+        self.geo_page_owner = "point"
+        self.geo_page_public = True
+        self.geo_page_private = False
+        self.geo_page_groups = False
 
 
     def onGenerate(self, kwargs):
@@ -67,8 +56,41 @@ class SOPPageViewerState(object):
         self._set_node(None)
         self.scene_viewer.clearPromptMessage()
 
-    #def onDraw(self, kwargs):
-    #    #self.log(f"on draw {self.node}")
+    def onMenuAction(self, kwargs):
+        self.geo_page_owner = kwargs.get("geo_page_owner", self.geo_page_owner)
+        self.geo_page_public = kwargs.get("geo_page_public", self.geo_page_public)
+        self.geo_page_private = kwargs.get("geo_page_private", self.geo_page_private)
+        self.geo_page_groups = kwargs.get("geo_page_groups", self.geo_page_groups)
+        self.opts_geo.setGlobalAttribValue(
+            "display_blocks",
+            0 if kwargs.get("geo_page_display", "status") == "status" else 1,
+        )
+        self._update_geo()
+
+    def _update_geo(self):
+        #self.log(f"update_geo {self.node}")
+        if not self.node:
+            return
+        new_geo = hou.Geometry()
+        report_geo = hou.Geometry()
+        report = shadeops_hom.geo_page_report(
+            self.node.path(),
+            self.geo_page_owner,
+            True,
+        )
+        page_tools.page_report_to_attribs(
+            report_geo,
+            report,
+            self.geo_page_public,
+            self.geo_page_private,
+            self.geo_page_groups,
+        )
+        self.invokegraph.execute(new_geo, [self.graph_geo, report_geo, self.opts_geo])
+        report_geo.clear()
+        self.geo.setGeometry(new_geo)
+        self.geo.show(True)
+        self.scene_viewer.curViewport().draw()
+
 
     def _on_selection(self, selection):
         #self.log("on selection")
@@ -107,4 +129,21 @@ def createViewerStateTemplate():
     )
     template.bindFactory(SOPPageViewerState)
     template.bindIcon("hicon:/SVGIcons.index?BUTTONS_grid_small.svg")
+
+    menu = hou.ViewerStateMenu("geo_page_menu", "Page Viewer Options")
+    menu.addRadioStrip("geo_page_owner", "Owner", "point")
+    menu.addRadioStripItem("geo_page_owner", "vertex", "Vertex")
+    menu.addRadioStripItem("geo_page_owner", "point", "Point")
+    menu.addRadioStripItem("geo_page_owner", "prim", "Primitive")
+    menu.addRadioStripItem("geo_page_owner", "detail", "Detail")
+    menu.addSeparator()
+    menu.addRadioStrip("geo_page_display", "Page Display", "status")
+    menu.addRadioStripItem("geo_page_display", "status", "Page Status")
+    menu.addRadioStripItem("geo_page_display", "blocks", "Page Blocks")
+    menu.addSeparator()
+    menu.addToggleItem("geo_page_public", "Public Attributes", True)
+    menu.addToggleItem("geo_page_private", "Private Attributes", False)
+    menu.addToggleItem("geo_page_groups", "Groups", False)
+    template.bindMenu(menu)
+
     return template
