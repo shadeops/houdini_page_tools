@@ -68,7 +68,7 @@ struct StartStop {
     GA_Offset stop = -1;
 };
 
-// SoA since we are going to create a Python object from each onne of these.
+// SoA since we are going to create a Python object from each one of these.
 struct OwnerStats {
     GA_Size offset_size = 0;
     GA_Size index_size = 0;
@@ -285,8 +285,8 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
         ret = ret && dictThief(d, "num_pages", PY_PyLong_FromLongLong(stats.num_pages));
         ret = ret && dictThief(d, "offset_size", PY_PyLong_FromLongLong(stats.offset_size));
         ret = ret && dictThief(d, "index_size", PY_PyLong_FromLongLong(stats.index_size));
-        ret = ret && dictThief(d, "monotonic_map", stats.is_monotonic ? PY_Py_True() : PY_Py_False());
-        ret = ret && dictThief(d, "trivial_map", stats.is_trivial ? PY_Py_True() : PY_Py_False());
+        ret = ret && PY_PyDict_SetItemString(d, "monotonic_map", stats.is_monotonic ? PY_Py_True() : PY_Py_False());
+        ret = ret && PY_PyDict_SetItemString(d, "trivial_map", stats.is_trivial ? PY_Py_True() : PY_Py_False());
         // PY_PyBytes_FromStringAndSize is not in Houdini 22's HDK
         //ret = ret && dictThief(d, "num_active_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.active.getRawArray()), sizeof(GA_Size)*stats.num_pages));
         //ret = ret && dictThief(d, "num_temporary_in_page", PyBytes_FromStringAndSize(reinterpret_cast<const char *>(stats.temporary.getRawArray()), sizeof(GA_Size)*stats.num_pages));
@@ -308,8 +308,8 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
             PY_PyObject *d_astats = PY_PyDict_New();
             dictThief(d_astats, "scope", PY_PyString_FromString(astats.scope));
             dictThief(d_astats, "data_id", PY_PyLong_FromLongLong(astats.data_id));
-            dictThief(d_astats, "is_table_hardened", astats.is_table_hardened ? PY_Py_True() : PY_Py_False());
-            dictThief(d_astats, "has_page_details", astats.has_page_details ? PY_Py_True() : PY_Py_False());
+            PY_PyDict_SetItemString(d_astats, "is_table_hardened", astats.is_table_hardened ? PY_Py_True() : PY_Py_False());
+            PY_PyDict_SetItemString(d_astats, "has_page_details", astats.has_page_details ? PY_Py_True() : PY_Py_False());
             if (astats.has_page_details) {
                 dictThief(d_astats, "constant_pages",
                 PY_Py_BuildValue("y#",
@@ -324,8 +324,8 @@ PY_PyObject *Py_GeoPageReport(PY_PyObject *self, PY_PyObject *args) {
                                 )
                 );
             } else {
-                dictThief(d_astats, "constant_pages", PY_Py_None());
-                dictThief(d_astats, "hardened_pages", PY_Py_None());
+                PY_PyDict_SetItemString(d_astats, "constant_pages", PY_Py_None());
+                PY_PyDict_SetItemString(d_astats, "hardened_pages", PY_Py_None());
             }
             dictThief(ad, astats.name.c_str(), d_astats);
         }
