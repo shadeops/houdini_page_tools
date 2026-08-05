@@ -66,7 +66,7 @@ def prep_page_report(report):
         "temporary_page_bits",
         "active_page_bits",
     ):
-        tmp = array.array("i")
+        tmp = array.array("I")
         tmp.frombytes(report[k])
         assert len(tmp) == report["num_pages"] * 32
         del report[k]
@@ -139,17 +139,18 @@ def page_report_to_attribs(geo, detail_report, owner="point", include_public=Tru
             attribs_reported += 1
             attrib_names.append(k)
             attrib_ids.append(v["data_id"])
-            if v["constant_page_bits"] is None:
+            page_details = v["page_details"]
+            if page_details is None:
                 page_info.append(0)
                 constant_pages.extend(empty_pages)
                 hardened_pages.extend(empty_pages)
             else:
                 page_info.append(1)
                 t = array.array("i")
-                t.frombytes(v["constant_page_bits"])
+                t.frombytes(page_details["constant_page_bits"])
                 constant_pages.extend(t)
                 t = array.array("i")
-                t.frombytes(v["hardened_page_bits"])
+                t.frombytes(page_details["hardened_page_bits"])
                 hardened_pages.extend(t)
 
     attrib_names_atr = geo.addArrayAttrib(hou.attribType.Global, "attrib_names", hou.attribData.String, 1)

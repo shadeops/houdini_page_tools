@@ -1,6 +1,7 @@
 // Return dict schema
 //
 // All *_memory values will be in bytes
+// All bitpacking assumes little endian
 //
 // {
 //  'node_path': str,
@@ -71,9 +72,10 @@
 //  },
 //
 //  'page_size': int,                          # GA_PAGE_SIZE, needs to be 1024
-//  'per_page_count_bytes': int,
-//  'page_word_bytes': int,                    # word "width" of the page
-//  'page_occupancy_words_per_page': int,      # uint32 words per page in page_bits masks
+//  'per_page_count_bytes': int,               # bytes per entry in
+//  num_[active|temporary|vacant]_per_page 'page_word_bytes': int,                    # word size of
+//  the per-page masks 'page_occupancy_words_per_page': int,      # uint32 words per page in the
+//  per-slot masks
 //
 //  # Index Maps
 //  'owners': {
@@ -94,11 +96,11 @@
 //          'unique_memory': int,
 //
 //          'page_mask_words': int,
-//          'num_active_per_page': bytes,      # i64 array, one per page
-//          'num_temporary_per_page': bytes,   # i64 array
-//          'num_vacant_per_page': bytes,      # i64 array
-//          'active_page_bits': bytes,         # bitarray
-//          'temporary_page_bits': bytes,      # bitarray
+//          'num_active_per_page': bytes,      # i64 array, one element per page
+//          'num_temporary_per_page': bytes,   # i64 array, one element per page
+//          'num_vacant_per_page': bytes,      # i64 array, one element per page
+//          'active_page_bits': bytes,         # bitarray, packed per slot as uint32[32]
+//          'temporary_page_bits': bytes,      # bitarray, packed per slot as uint32[32]
 //          'full_block_ranges': bytes,        # int64[2] array, [start, end)
 //
 //          'attributes': {
@@ -134,15 +136,19 @@
 //                          },
 //                      },
 //
-//                      'has_page_details': bool,
-//                      'has_hardened_page_details': bool,
-//                      'is_page_table_hardened': bool,
-//                      'num_constant_pages': int,
-//                      'num_shared_pages': int,          # always 0 for element groups / primitive_lists
-//                      'num_hardened_pages': int,
+//                      # Not all attributes are backed by pages. Extra info provided if available.
+//                      'page_details': None | {
+//                          # Some apis don't provide details on if the pages are hardened or not
+//                          # in these cases they will only be "constant" or "unknown"
+//                          'has_hardened_details': bool,
+//                          'is_page_table_hardened': bool,
+//                          'num_constant_pages': int,
+//                          'num_shared_pages': int,
+//                          'num_hardened_pages': int,
 //
-//                      'constant_page_bits': bytes,    # bitarray (one bit per page)
-//                      'hardened_page_bits': bytes,    # bitarray (one bit per page)
+//                          'constant_page_bits': bytes,    # bitarray (one bit per page)
+//                          'hardened_page_bits': bytes,    # bitarray (one bit per page)
+//                      },
 //                  },
 //              },
 //          },
@@ -1014,7 +1020,6 @@ pyDictFromAttributeStats(const AttributeStats& attrib_stats) {
     setBool(d, "is_data_id_found_in_inputs", attrib_stats.is_data_id_found_in_inputs);
     setBool(d, "is_tail_initialized", attrib_stats.is_tail_initialized);
     setI64(d, "data_id", attrib_stats.data_id);
-    setBool(d, "has_page_details", attrib_stats.has_page_details);
     if (attrib_stats.is_meta) {
         setBool(d, "is_full_representation", attrib_stats.is_full_representation);
 
@@ -1032,22 +1037,30 @@ pyDictFromAttributeStats(const AttributeStats& attrib_stats) {
         }
         if (types) PY_PyDict_SetItemString(d, "primitive_types", types);
     }
-    if (attrib_stats.has_page_details) {
-        setBool(d, "has_hardened_page_details", attrib_stats.has_hardened_page_details);
-        setBool(d, "is_page_table_hardened", attrib_stats.is_page_table_hardened);
-        setI64(d, "num_constant_pages", attrib_stats.num_constant_pages);
-        setI64(d, "num_shared_pages", attrib_stats.num_shared_pages);
-        setI64(d, "num_hardened_pages", attrib_stats.num_hardened_pages);
 
-        setObjSteal(d, "constant_page_bits",
+    if (attrib_stats.has_page_details) {
+        PY_AutoObject page_details(PY_PyDict_New());
+        if (!page_details) return d;
+
+        setBool(page_details, "has_hardened_details", attrib_stats.has_hardened_page_details);
+        setBool(page_details, "is_page_table_hardened", attrib_stats.is_page_table_hardened);
+        setI64(page_details, "num_constant_pages", attrib_stats.num_constant_pages);
+        setI64(page_details, "num_shared_pages", attrib_stats.num_shared_pages);
+        setI64(page_details, "num_hardened_pages", attrib_stats.num_hardened_pages);
+
+        setObjSteal(page_details, "constant_page_bits",
             bytesFromRaw(attrib_stats.constant_page_bits.data(),
                 sizeof(UT_BitArray::BlockType) *
                     UT_BitArray::numWords(attrib_stats.constant_page_bits.size())));
 
-        setObjSteal(d, "hardened_page_bits",
+        setObjSteal(page_details, "hardened_page_bits",
             bytesFromRaw(attrib_stats.hardened_page_bits.data(),
                 sizeof(UT_BitArray::BlockType) *
                     UT_BitArray::numWords(attrib_stats.hardened_page_bits.size())));
+
+        PY_PyDict_SetItemString(d, "page_details", page_details);
+    } else {
+        PY_PyDict_SetItemString(d, "page_details", PY_Py_None());
     }
     return d;
 }
