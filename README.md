@@ -60,3 +60,14 @@ Try to compress pages into constant pages.
 ## Geo Page Viewer State
 A custom viewer state that tracks the currently selected geometry and displays a visual representation of the geometry page occupancy.
 Can be accessed through the *Sop Page Tools* Shelf Set
+
+## SOP Memory Python Panel - *LLM GENERATED*
+A purely LLM generated Python Panel for visualizing the `_page_tools.report` dictionary.
+The interface is based on a LLM drafted [spec](notes/SOP_Memory_Panel_Spec.md). The spec was created after many iterations of the
+functionality in a human / LLM feedback loop.
+
+This code has had minimal eyes upon it, and is littered with overly verbose comments and redundant prose that is common to LLMs.
+Despite the code state, the panel has been heavily used by humans and verified against the report itself.
+
+The Python Panel is almost driven by data from the `_page_tools.report` so errors in accounting reside with `_page_tools.report`
+and a human is to blame. The two exceptions are documented in the panel spec.

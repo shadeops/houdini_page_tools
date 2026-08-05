@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pythonPanelDocument>
+  <!-- This file contains definitions of Python interfaces and the
+ interfaces menu.  It should not be hand-edited when it is being
+ used by the application.  Note, that two definitions of the
+ same interface or of the interfaces menu are not allowed
+ in a single file. -->
+  <interface name="sop_memory" label="SOP Memory" icon="MISC_python" showNetworkNavigationBar="true" help_url="">
+    <script><![CDATA[
+import hou
+
+from sop_memory_panel import model, panel
+
+# Reloads only when HOUDINI_PYTHON_DEVELOPMENT=1
+import toolutils
+toolutils.safe_reload(model)
+toolutils.safe_reload(panel)
+
+_panel = None
+
+
+def onCreateInterface():
+    global _panel
+    _panel = panel.SopMemoryPanel()
+    # Seed from the pane tab's current node if there is one.
+    pane_tab = kwargs["paneTab"]
+    node = pane_tab.currentNode() if hasattr(pane_tab, "currentNode") else None
+    _panel.set_node(node)
+    return _panel
+
+
+def onNodePathChanged(node):
+    if _panel is not None:
+        _panel.set_node(node)
+
+
+def onDestroyInterface():
+    global _panel
+    if _panel is not None:
+        _panel.teardown()
+        _panel = None
+    ]]></script>
+    <includeInPaneTabMenu menu_position="0" create_separator="false"/>
+    <includeInToolbarMenu menu_position="208" create_separator="false"/>
+    <help><![CDATA[]]></help>
+  </interface>
+</pythonPanelDocument>
