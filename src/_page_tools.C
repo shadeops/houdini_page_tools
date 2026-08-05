@@ -727,14 +727,14 @@ static void reconcileTotals(DetailStats& report) {
         }
     }
     report.attribute_set_total_memory = report.attribute_set_total_memory - group_attr_total_memory;
-    UT_ASSERT_MSG(report.attribute_set_total_memory < 0, "attribute_set_total_memory less than 0");
+    UT_ASSERT_MSG(report.attribute_set_total_memory >= 0, "attribute_set_total_memory less than 0");
 
     report.attribute_set_new_memory = report.attribute_set_new_memory - group_attr_new_memory;
-    UT_ASSERT_MSG(report.attribute_set_new_memory < 0, "attribute_set_new_memory less than 0");
+    UT_ASSERT_MSG(report.attribute_set_new_memory >= 0, "attribute_set_new_memory less than 0");
 
     report.attribute_set_unique_memory =
         report.attribute_set_unique_memory - group_attr_unique_memory;
-    UT_ASSERT_MSG(report.attribute_set_unique_memory < 0,
+    UT_ASSERT_MSG(report.attribute_set_unique_memory >= 0,
                   "attribute_set_unique_memory less than 0");
 
     report.attribute_set_overhead_memory = report.attribute_set_total_memory - covered_total_memory;
@@ -870,7 +870,7 @@ void gatherDetailStats(const char*  node_path,
             }
 
             table_stats.name_map_memory = table_stats.total_memory - groups_total;
-            UT_ASSERT_MSG(table_stats.name_map_memory < 0, "name_map_memory less than 0");
+            UT_ASSERT_MSG(table_stats.name_map_memory >= 0, "name_map_memory less than 0");
         }
 
         report.group_tables_total_memory  += table_stats.total_memory;
