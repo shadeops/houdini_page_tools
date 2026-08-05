@@ -9,9 +9,7 @@ COOK_EVENTS = (
     hou.nodeEventType.BeingDeleted,
 )
 
-import shadeops_hom
 import page_tools
-
 
 class SOPPageViewerState(object):
     def __init__(self, state_name, scene_viewer):
