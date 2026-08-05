@@ -31,8 +31,9 @@
 //      'detail_struct_new_memory': int,
 //      'detail_struct_unique_memory': int,
 //
-//      # This is the SOP's countMemory report minus all known sources' countMemory
-//      # This excess will be the ga_TailInitializeTable which is main(?) used for groups
+//      # This is the SOP's countMemory report minus the various measured countMemory stats
+//      # that are accessible.
+//      # This excess will be the ga_TailInitializeTable which is mainly(?) used for groups
 //      # to set default values for values past the offset_size and constant pages
 //      # There is no public interface to countMemory, but we can estimate it from the
 //      # number of tail initializers
@@ -48,7 +49,7 @@
 //              'unique_memory': int,
 //          },
 //
-//          # Edges aren't store like the other groups, which are attribute based.
+//          # Edges aren't stored like the other groups, which are attribute based.
 //          # They are not page backed and are stored directly in the group table.
 //          'edge': {
 //              'total_memory': int,
@@ -71,7 +72,7 @@
 //
 //  'page_size': int,                          # GA_PAGE_SIZE, needs to be 1024
 //  'per_page_count_bytes': int,
-//  'page_word_bytes': int,                    # num of bytes in a page 'word'
+//  'page_word_bytes': int,                    # word "width" of the page
 //  'page_occupancy_words_per_page': int,      # uint32 words per page in page_bits masks
 //
 //  # Index Maps
@@ -101,7 +102,7 @@
 //          'full_block_ranges': bytes,        # int64[2] array, [start, end)
 //
 //          'attributes': {
-//              # While primtive lists aren't an attribute they can be page backed
+//              # While primitive lists aren't an attribute they can be page backed
 //              # when not a "full representation", so we'll treat them as "meta"
 //              # attributes so piggy back on the page counting.
 //              'public | private | group | meta': {
@@ -137,7 +138,7 @@
 //                      'has_hardened_page_details': bool,
 //                      'is_page_table_hardened': bool,
 //                      'num_constant_pages': int,
-//                      'num_shared_pages': int,          # always 0 for element groups?
+//                      'num_shared_pages': int,          # always 0 for element groups / primitive_lists
 //                      'num_hardened_pages': int,
 //
 //                      'constant_page_bits': bytes,    # bitarray (one bit per page)
@@ -206,7 +207,7 @@ setPageBit(uint32* mask, GA_Size slot) {
 
 // NOTE:
 //  Occasionally define GA_STRICT_TYPES to ensure we aren't mixing GA_Offset
-//  and GA_Index incorrectly. (Normally both ar exint)
+//  and GA_Index incorrectly. (Normally both an exint)
 
 struct PrimTypeStats {
     UT_StringHolder type_name;
@@ -459,8 +460,8 @@ gatherPrimitiveTypeStats(const GU_Detail* gdp,
     bool                                  is_instanced,
     UT_Array<PrimTypeStats>&              prim_types) {
     // We need to maintain a single counter and run every prim through it. We do this
-    // instead of creating a new counter for eac prim. This is because two prims
-    // might share the same reference and using a single counter prevent double counting.
+    // instead of creating a new counter for each prim. This is because two prims
+    // might share the same reference and using a single counter prevents double counting.
     // However this makes tracking each primitive's contribution more involved since we
     // need to calculate the difference from the previous step. In other words, if we
     // grew by 10 bytes, then we knew that primitive wasn't shared with a previous prim.
@@ -544,7 +545,7 @@ gatherPrimitiveListMeta(const GU_Detail* gdp,
     attrib_stats.is_page_table_hardened    = false;
     attrib_stats.constant_page_bits.setSize(num_pages);
     // Similar to the groups, there isn't a public API for the pageDataHandle
-    // so we just set the hardend page bits to 0
+    // so we just leave them initialized to 0
     attrib_stats.hardened_page_bits.setSize(num_pages);
     for (GA_Size page = 0; page < num_pages; ++page) {
         const bool is_const = prim_list.isVertexListPageConstant(GA_PageNum(page));
@@ -649,7 +650,7 @@ gatherSources(SOP_Node*         sop,
     UT_Array<const GU_Detail*>& sources) {
     if (SOP_Node* internal_sop = sop->getOutputSop(out_idx, /*fallback_to_display_render*/ true)) {
         // We fetch the cached geo and don't force a cook. The assumption is
-        // our current node cooked any needed depencencies already.
+        // our current node cooked any needed dependencies already.
         const GU_Detail* internal_gdp = internal_sop->getLastGeo();
         if (internal_gdp && internal_gdp == out_gdp) {
             report.is_instanced = true;
@@ -677,7 +678,7 @@ gatherSources(SOP_Node*         sop,
     if (!report.is_instanced) {
         // Similar to above but now we do the same for the extra inputs
         // This can lead to false positives, like if a parameter references a node
-        // but never uses the geometry. But since are unable to look inside a node
+        // but never uses the geometry. But since we are unable to look inside a node
         // this is the best we can do.
         // TODO: maybe we can via a parm interest vs data interest?
         OP_NodeList extra_nodes;
@@ -774,10 +775,6 @@ reconcileTotals(DetailStats& report) {
         report.group_tables_unique_memory - report.detail_struct_unique_memory;
 }
 
-// Throws HOM_OperationFailed if node_path does not resolve to a cookable SOP or
-// the cook yields no geometry. The Python wrapper (in *_ToCompile.C) translates
-// that into a hou.OperationFailed, mirroring the HDK HOM sample's convention of
-// having the worker throw a typed HOM_Error rather than return a status code.
 void
 gatherDetailStats(const char* node_path,
     bool                      want_block_ranges,
@@ -855,7 +852,7 @@ gatherDetailStats(const char* node_path,
         }
 
         if (i == GROUP_TABLE_EDGE) {
-            // Group edges aren't attributes so they have to be handled differently
+            // Edge groups aren't attributes so they have to be handled differently
             const GA_EdgeGroupTable& edge_table = out_gdp->edgeGroups();
             table_stats.groups.setCapacityIfNeeded(edge_table.entries());
 
@@ -1253,7 +1250,7 @@ report_Wrapper(PY_PyObject* /*self*/, PY_PyObject* args) {
         return page_tools::gatherGeometryStats(node_path, block_ranges != 0, output_index);
     } catch (HOM_Error& error) {
         // The _hdk_sample_hom_extensions.C uses UTunmangleClassNameFromTypeIdName
-        // to get the exeption class name, but I believe we can also fetch it this
+        // to get the exception class name, but I believe we can also fetch it this
         // way which looks a bit more straight forward.
         const std::string exception_class_name = error.exceptionTypeName();
 
