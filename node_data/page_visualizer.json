@@ -15,7 +15,7 @@
     ],
     "position": [
       -7.37,
-      -15.12
+      -16.53
     ],
     "children": {
       "color_page_grid": {
@@ -540,13 +540,13 @@
         "parms": {
           "size": [
             0.8,
-            0.03
+            0.065
           ],
           "t": [
             0.0,
             0.0,
             {
-              "expression": "0.55 + 0.03/2"
+              "expression": "0.55+0.065/2"
             }
           ],
           "rows": 2,
@@ -571,46 +571,6 @@
           "offset": 0.025,
           "divisions": 5
         }
-      },
-      "offset_for_hardened": {
-        "type": "xform",
-        "inputs": [
-          {
-            "from": "bar_decoration",
-            "from_index": 0,
-            "to_index": 0
-          }
-        ],
-        "position": [
-          -16.55,
-          3.15
-        ],
-        "parms": {
-          "t": [
-            0.0,
-            0.0,
-            0.038
-          ]
-        }
-      },
-      "hardened_and_constant": {
-        "type": "merge",
-        "inputs": [
-          {
-            "from": "bar_decoration",
-            "from_index": 0,
-            "to_index": 0
-          },
-          {
-            "from": "offset_for_hardened",
-            "from_index": 0,
-            "to_index": 1
-          }
-        ],
-        "position": [
-          -18.55,
-          2.02
-        ]
       },
       "switchif1": {
         "type": "switchif",
@@ -955,7 +915,7 @@
         ],
         "parms": {
           "class": "primitive",
-          "snippet": "int is_constant = @primnum % 2 == 0;\nint page_offset = (@primnum / 2) % detail(1, \"num_pages\");\n\nint which_integer = shr(page_offset, 5) + i@attrib_index * int(detail(1, \"page_words\"));\n//which_integer += i@attrib_index * int(detail(1, \"page_words\"));\n\nint page_info[] = is_constant ? detail(1, \"constant_pages\") : detail(1, \"hardened_pages\");\n\nint page_integer = page_info[which_integer];\n\nv@Cd = 0;\nint active = (page_integer & shl(1, (page_offset & 31))) != 0;\nif (active) {\n    v@Cd = is_constant ? {1,0,1} : {1,1,0};\n}\n\n//i@wi = which_integer;\n//i@po = page_offset;\n//i@pi = page_integer;\n//i@sl = (1, page_offset);\n//i@x = active;\n\n\n\n\n"
+          "snippet": "int page_offset = (@primnum) % detail(1, \"num_pages\");\n\nint which_integer = shr(page_offset, 5) + i@attrib_index * int(detail(1, \"page_words\"));\n//which_integer += i@attrib_index * int(detail(1, \"page_words\"));\n\nint constant_pages[] = detail(1, \"constant_pages\");\nint hardened_pages[] = detail(1, \"hardened_pages\");\n\nint constant_integer = constant_pages[which_integer];\nint hardened_integer = hardened_pages[which_integer];\n\nv@Cd = 0;\nint is_constant = (constant_integer & shl(1, (page_offset & 31))) != 0;\nint is_hardened = (hardened_integer & shl(1, (page_offset & 31))) != 0;\nif (is_constant) {\n    v@Cd = {0.7, 0.7, 0.1};\n} else if (is_hardened) {\n    v@Cd = {0.2, 0.2, 0.9};\n} else {\n    v@Cd = {0.9, 0.1, 1.0};\n}\n\n//i@wi = which_integer;\n//i@po = page_offset;\n//i@pi = page_integer;\n//i@sl = (1, page_offset);\n//i@x = active;\n\n\n\n\n"
         }
       },
       "transform_override": {
@@ -1126,7 +1086,7 @@
         "type": "attribwrangle",
         "inputs": [
           {
-            "from": "hardened_and_constant",
+            "from": "bar_decoration",
             "from_index": 0,
             "to_index": 0
           }
