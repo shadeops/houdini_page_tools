@@ -401,6 +401,7 @@ static void pageStorageFromArray(const PageArrayT& page_array,
                                  AttributeStats&   attrib_stats) {
     attrib_stats.has_page_details       = true;
     attrib_stats.is_page_table_hardened = page_array.isTableHardened();
+    attrib_stats.has_hardened_page_details = true;
     attrib_stats.constant_page_bits.setSize(num_pages);
     attrib_stats.hardened_page_bits.setSize(num_pages);
 
