@@ -21,3 +21,4 @@ AllowShortFunctionsOnASingleLine: All
 AllowShortEnumsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AlignAfterOpenBracket: false
+BreakAfterReturnType: TopLevel

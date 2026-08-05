@@ -199,7 +199,8 @@ struct PageBits {
     uint32 bits[32] = {0};
 };
 
-inline void setPageBit(uint32* mask, GA_Size slot) {
+inline void
+setPageBit(uint32* mask, GA_Size slot) {
     mask[slot >> 5] |= (static_cast<uint32>(1) << (slot & 31));
 }
 
@@ -283,8 +284,8 @@ enum GroupTableId {
     GROUP_TABLE_N
 };
 
-static const char* const       GROUP_TABLE_NAMES[GROUP_TABLE_N] = {"point", "primitive", "vertex",
-                                                                   "edge"};
+static const char* const GROUP_TABLE_NAMES[GROUP_TABLE_N] = {
+    "point", "primitive", "vertex", "edge"};
 
 static const GA_AttributeOwner GROUP_TABLE_OWNERS[GROUP_TABLE_EDGE] = {
     GA_ATTRIB_POINT, GA_ATTRIB_PRIMITIVE, GA_ATTRIB_VERTEX};
@@ -362,7 +363,8 @@ static const int               OUTPUT_FROM_VIEW              = 0x7fffffff;
 static const GA_AttributeOwner ALL_OWNERS[GA_ATTRIB_OWNER_N] = {
     GA_ATTRIB_VERTEX, GA_ATTRIB_POINT, GA_ATTRIB_PRIMITIVE, GA_ATTRIB_GLOBAL};
 
-static void gatherInputDataIds(const GU_Detail* in_gdp, UT_Set<GA_DataId>& data_ids) {
+static void
+gatherInputDataIds(const GU_Detail* in_gdp, UT_Set<GA_DataId>& data_ids) {
     for (GA_AttributeOwner owner : ALL_OWNERS) {
         const GA_AttributeDict& dict = in_gdp->getAttributeDict(owner);
 
@@ -379,10 +381,11 @@ static void gatherInputDataIds(const GU_Detail* in_gdp, UT_Set<GA_DataId>& data_
     if (prim_list_id != GA_INVALID_DATAID) data_ids.insert(prim_list_id);
 }
 
-static void gatherAttributeStats(const GA_Attribute*              out_attr,
-                                 const UT::ArraySet<const void*>& avoid,
-                                 const UT_Set<GA_DataId>&         input_data_ids,
-                                 AttributeStats&                  attrib_stats) {
+static void
+gatherAttributeStats(const GA_Attribute* out_attr,
+    const UT::ArraySet<const void*>&     avoid,
+    const UT_Set<GA_DataId>&             input_data_ids,
+    AttributeStats&                      attrib_stats) {
     UT_MemoryCounterNewSafe counter(avoid);
     out_attr->countMemory(counter, /*inclusive*/ true);
 
@@ -396,12 +399,13 @@ static void gatherAttributeStats(const GA_Attribute*              out_attr,
 }
 
 template <typename PageArrayT>
-static void pageStorageFromArray(const PageArrayT& page_array,
-                                 GA_Size           num_pages,
-                                 AttributeStats&   attrib_stats) {
-    attrib_stats.has_page_details       = true;
-    attrib_stats.is_page_table_hardened = page_array.isTableHardened();
+static void
+pageStorageFromArray(const PageArrayT& page_array,
+    GA_Size                            num_pages,
+    AttributeStats&                    attrib_stats) {
+    attrib_stats.has_page_details          = true;
     attrib_stats.has_hardened_page_details = true;
+    attrib_stats.is_page_table_hardened    = page_array.isTableHardened();
     attrib_stats.constant_page_bits.setSize(num_pages);
     attrib_stats.hardened_page_bits.setSize(num_pages);
 
@@ -421,9 +425,8 @@ static void pageStorageFromArray(const PageArrayT& page_array,
     }
 }
 
-static void gatherPageStorage(const GA_Attribute* attrib,
-                              GA_Size             num_pages,
-                              AttributeStats&     attrib_stats) {
+static void
+gatherPageStorage(const GA_Attribute* attrib, GA_Size num_pages, AttributeStats& attrib_stats) {
     if (const GA_ATINumeric* n = GA_ATINumeric::cast(attrib)) {
         pageStorageFromArray(n->getData(), num_pages, attrib_stats);
     } else if (const GA_ATITopology* t = GA_ATITopology::cast(attrib)) {
@@ -450,10 +453,11 @@ static void gatherPageStorage(const GA_Attribute* attrib,
     }
 }
 
-static void gatherPrimitiveTypeStats(const GU_Detail*                 gdp,
-                                     const UT::ArraySet<const void*>& avoid,
-                                     bool                             is_instanced,
-                                     UT_Array<PrimTypeStats>&         prim_types) {
+static void
+gatherPrimitiveTypeStats(const GU_Detail* gdp,
+    const UT::ArraySet<const void*>&      avoid,
+    bool                                  is_instanced,
+    UT_Array<PrimTypeStats>&              prim_types) {
     // We need to maintain a single counter and run every prim through it. We do this
     // instead of creating a new counter for eac prim. This is because two prims
     // might share the same reference and using a single counter prevent double counting.
@@ -501,12 +505,13 @@ static void gatherPrimitiveTypeStats(const GU_Detail*                 gdp,
     }
 }
 
-static void gatherPrimitiveListMeta(const GU_Detail*                 gdp,
-                                    GA_Size                          num_pages,
-                                    const UT::ArraySet<const void*>& avoid,
-                                    const UT_Set<GA_DataId>&         input_data_ids,
-                                    bool                             is_instanced,
-                                    AttributeStats&                  attrib_stats) {
+static void
+gatherPrimitiveListMeta(const GU_Detail* gdp,
+    GA_Size                              num_pages,
+    const UT::ArraySet<const void*>&     avoid,
+    const UT_Set<GA_DataId>&             input_data_ids,
+    bool                                 is_instanced,
+    AttributeStats&                      attrib_stats) {
     attrib_stats.name                 = "<primitive list>";
     attrib_stats.owner                = GA_ATTRIB_PRIMITIVE;
     attrib_stats.is_meta              = true;
@@ -526,7 +531,7 @@ static void gatherPrimitiveListMeta(const GU_Detail*                 gdp,
     attrib_stats.data_id = prim_list.getDataId();
     attrib_stats.is_data_id_found_in_inputs =
         is_instanced || (attrib_stats.data_id != GA_INVALID_DATAID &&
-                         input_data_ids.count(attrib_stats.data_id) != 0);
+                            input_data_ids.count(attrib_stats.data_id) != 0);
 
     attrib_stats.is_full_representation = prim_list.isFullRepresentation();
     if (attrib_stats.is_full_representation)
@@ -549,12 +554,13 @@ static void gatherPrimitiveListMeta(const GU_Detail*                 gdp,
 }
 
 // Per-owner index-map stats + per-page occupancy (counts + intra-page bitmasks).
-static void gatherOwnerStats(const GU_Detail*                 gdp,
-                             GA_AttributeOwner                owner,
-                             bool                             want_block_ranges,
-                             const UT::ArraySet<const void*>& avoid,
-                             bool                             instanced,
-                             OwnerStats&                      owner_stats) {
+static void
+gatherOwnerStats(const GU_Detail*    gdp,
+    GA_AttributeOwner                owner,
+    bool                             want_block_ranges,
+    const UT::ArraySet<const void*>& avoid,
+    bool                             instanced,
+    OwnerStats&                      owner_stats) {
     const GA_IndexMap& index_map = gdp->getIndexMap(owner);
     owner_stats.owner            = owner;
     owner_stats.offset_size      = index_map.offsetSize();
@@ -634,12 +640,13 @@ static void gatherOwnerStats(const GU_Detail*                 gdp,
     }
 }
 
-static void gatherSources(SOP_Node*                   sop,
-                          const GU_Detail*            out_gdp,
-                          const OP_Context&           context,
-                          int                         out_idx,
-                          DetailStats&                report,
-                          UT_Array<const GU_Detail*>& sources) {
+static void
+gatherSources(SOP_Node*         sop,
+    const GU_Detail*            out_gdp,
+    const OP_Context&           context,
+    int                         out_idx,
+    DetailStats&                report,
+    UT_Array<const GU_Detail*>& sources) {
     if (SOP_Node* internal_sop = sop->getOutputSop(out_idx, /*fallback_to_display_render*/ true)) {
         // We fetch the cached geo and don't force a cook. The assumption is
         // our current node cooked any needed depencencies already.
@@ -675,10 +682,10 @@ static void gatherSources(SOP_Node*                   sop,
         // TODO: maybe we can via a parm interest vs data interest?
         OP_NodeList extra_nodes;
         sop->getExtraInputNodes(extra_nodes,
-                                /*remove_duplicates*/ true,
-                                /*data_interest*/ true,
-                                /*parm_interest*/ true,
-                                /*flag_interest*/ false);
+            /*remove_duplicates*/ true,
+            /*data_interest*/ true,
+            /*parm_interest*/ true,
+            /*flag_interest*/ false);
         sources.setCapacityIfNeeded(sources.size() + extra_nodes.size());
         for (exint extra_index = 0; extra_index < extra_nodes.size(); ++extra_index) {
             SOP_Node* extra_sop = CAST_SOPNODE(extra_nodes(extra_index));
@@ -696,7 +703,8 @@ static void gatherSources(SOP_Node*                   sop,
     if (report.is_instanced) sources.clear();
 }
 
-static void reconcileTotals(DetailStats& report) {
+static void
+reconcileTotals(DetailStats& report) {
     int64 group_attr_total_memory  = 0;
     int64 group_attr_new_memory    = 0;
     int64 group_attr_unique_memory = 0;
@@ -735,8 +743,8 @@ static void reconcileTotals(DetailStats& report) {
 
     report.attribute_set_unique_memory =
         report.attribute_set_unique_memory - group_attr_unique_memory;
-    UT_ASSERT_MSG(report.attribute_set_unique_memory >= 0,
-                  "attribute_set_unique_memory less than 0");
+    UT_ASSERT_MSG(
+        report.attribute_set_unique_memory >= 0, "attribute_set_unique_memory less than 0");
 
     report.attribute_set_overhead_memory = report.attribute_set_total_memory - covered_total_memory;
     report.attribute_set_overhead_new_memory = report.attribute_set_new_memory - covered_new_memory;
@@ -770,10 +778,11 @@ static void reconcileTotals(DetailStats& report) {
 // the cook yields no geometry. The Python wrapper (in *_ToCompile.C) translates
 // that into a hou.OperationFailed, mirroring the HDK HOM sample's convention of
 // having the worker throw a typed HOM_Error rather than return a status code.
-void gatherDetailStats(const char*  node_path,
-                       bool         want_block_ranges,
-                       int          output_index,
-                       DetailStats& report) {
+void
+gatherDetailStats(const char* node_path,
+    bool                      want_block_ranges,
+    int                       output_index,
+    DetailStats&              report) {
     HOM_AutoLock hom_lock;
 
     report.node_path = node_path;
@@ -852,7 +861,7 @@ void gatherDetailStats(const char*  node_path,
 
             int64 groups_total = 0;
             for (GA_EdgeGroupTable::iterator it = edge_table.beginTraverse();
-                 it != edge_table.endTraverse(); ++it) {
+                it != edge_table.endTraverse(); ++it) {
                 const GA_EdgeGroup* group = it.group();
                 if (!group) continue;
 
@@ -891,8 +900,8 @@ void gatherDetailStats(const char*  node_path,
 
     for (GA_AttributeOwner owner : ALL_OWNERS) {
         OwnerStats& owner_stats = report.owner_stats[owner];
-        gatherOwnerStats(out_gdp, owner, want_block_ranges, avoid, report.is_instanced,
-                         owner_stats);
+        gatherOwnerStats(
+            out_gdp, owner, want_block_ranges, avoid, report.is_instanced, owner_stats);
         report.index_maps_total_memory    += owner_stats.total_memory;
         report.index_maps_new_memory      += owner_stats.new_memory;
         report.index_maps_unique_memory   += owner_stats.unique_memory;
@@ -932,29 +941,33 @@ void gatherDetailStats(const char*  node_path,
 
         if (owner == GA_ATTRIB_PRIMITIVE) {
             AttributeStats& meta = owner_stats.attributes[owner_stats.attributes.append()];
-            gatherPrimitiveListMeta(out_gdp, num_pages, avoid, input_data_ids, report.is_instanced,
-                                    meta);
+            gatherPrimitiveListMeta(
+                out_gdp, num_pages, avoid, input_data_ids, report.is_instanced, meta);
         }
     }
 
     reconcileTotals(report);
 }
 
-static void setStr(PY_PyObject* d, const char* k, const char* v) {
+static void
+setStr(PY_PyObject* d, const char* k, const char* v) {
     PY_AutoObject o(PY_Py_BuildValue("s", v ? v : ""));
     PY_PyDict_SetItemString(d, k, o);
 }
 
-static void setI64(PY_PyObject* d, const char* k, int64 v) {
+static void
+setI64(PY_PyObject* d, const char* k, int64 v) {
     PY_AutoObject o(PY_PyLong_FromLongLong((long long)v));
     PY_PyDict_SetItemString(d, k, o);
 }
 
-static void setBool(PY_PyObject* d, const char* k, bool v) {
+static void
+setBool(PY_PyObject* d, const char* k, bool v) {
     PY_PyDict_SetItemString(d, k, v ? PY_Py_True() : PY_Py_False());
 }
 
-static void setObjSteal(PY_PyObject* d, const char* k, PY_PyObject* o_raw) {
+static void
+setObjSteal(PY_PyObject* d, const char* k, PY_PyObject* o_raw) {
     PY_AutoObject o(o_raw);
     if (!o) return;
     PY_PyDict_SetItemString(d, k, o);
@@ -962,12 +975,14 @@ static void setObjSteal(PY_PyObject* d, const char* k, PY_PyObject* o_raw) {
 
 // We need to use PY_Py_BuildValue since the Houdini PY headers don't
 // expose all the various build bytes helpers.
-static PY_PyObject* bytesFromRaw(const void* data, size_t nbytes) {
+static PY_PyObject*
+bytesFromRaw(const void* data, size_t nbytes) {
     const char* cp = nbytes ? reinterpret_cast<const char*>(data) : "";
     return PY_Py_BuildValue("y#", cp, static_cast<PY_Py_ssize_t>(nbytes));
 }
 
-static const char* ownerLabel(GA_AttributeOwner owner) {
+static const char*
+ownerLabel(GA_AttributeOwner owner) {
     switch (owner) {
         case GA_ATTRIB_POINT:     return "point";
         case GA_ATTRIB_VERTEX:    return "vertex";
@@ -977,7 +992,8 @@ static const char* ownerLabel(GA_AttributeOwner owner) {
     }
 }
 
-static const char* scopeLabel(GA_AttributeScope scope) {
+static const char*
+scopeLabel(GA_AttributeScope scope) {
     switch (scope) {
         case GA_SCOPE_PUBLIC:  return "public";
         case GA_SCOPE_PRIVATE: return "private";
@@ -986,7 +1002,8 @@ static const char* scopeLabel(GA_AttributeScope scope) {
     }
 }
 
-static PY_PyObject* pyDictFromAttributeStats(const AttributeStats& attrib_stats) {
+static PY_PyObject*
+pyDictFromAttributeStats(const AttributeStats& attrib_stats) {
     PY_PyObject* d = PY_PyDict_New();
     if (!d) return nullptr;
 
@@ -1025,22 +1042,21 @@ static PY_PyObject* pyDictFromAttributeStats(const AttributeStats& attrib_stats)
         setI64(d, "num_shared_pages", attrib_stats.num_shared_pages);
         setI64(d, "num_hardened_pages", attrib_stats.num_hardened_pages);
 
-        setObjSteal(
-            d, "constant_page_bits",
+        setObjSteal(d, "constant_page_bits",
             bytesFromRaw(attrib_stats.constant_page_bits.data(),
-                         sizeof(UT_BitArray::BlockType) *
-                             UT_BitArray::numWords(attrib_stats.constant_page_bits.size())));
+                sizeof(UT_BitArray::BlockType) *
+                    UT_BitArray::numWords(attrib_stats.constant_page_bits.size())));
 
-        setObjSteal(
-            d, "hardened_page_bits",
+        setObjSteal(d, "hardened_page_bits",
             bytesFromRaw(attrib_stats.hardened_page_bits.data(),
-                         sizeof(UT_BitArray::BlockType) *
-                             UT_BitArray::numWords(attrib_stats.hardened_page_bits.size())));
+                sizeof(UT_BitArray::BlockType) *
+                    UT_BitArray::numWords(attrib_stats.hardened_page_bits.size())));
     }
     return d;
 }
 
-static PY_PyObject* pyDictFromOwnerStats(const OwnerStats& owner_stats, bool want_block_ranges) {
+static PY_PyObject*
+pyDictFromOwnerStats(const OwnerStats& owner_stats, bool want_block_ranges) {
     PY_AutoObject d(PY_PyDict_New());
     if (!d) return nullptr;
     setI64(d, "owner", owner_stats.owner);
@@ -1055,21 +1071,21 @@ static PY_PyObject* pyDictFromOwnerStats(const OwnerStats& owner_stats, bool wan
     setI64(d, "page_mask_words", UT_BitArray::numWords(owner_stats.num_pages));
 
     setObjSteal(d, "num_active_per_page",
-                bytesFromRaw(owner_stats.num_active_per_page.getRawArray(),
-                             sizeof(GA_Size) * owner_stats.num_active_per_page.size()));
+        bytesFromRaw(owner_stats.num_active_per_page.getRawArray(),
+            sizeof(GA_Size) * owner_stats.num_active_per_page.size()));
     setObjSteal(d, "num_temporary_per_page",
-                bytesFromRaw(owner_stats.num_temporary_per_page.getRawArray(),
-                             sizeof(GA_Size) * owner_stats.num_temporary_per_page.size()));
+        bytesFromRaw(owner_stats.num_temporary_per_page.getRawArray(),
+            sizeof(GA_Size) * owner_stats.num_temporary_per_page.size()));
     setObjSteal(d, "num_vacant_per_page",
-                bytesFromRaw(owner_stats.num_vacant_per_page.getRawArray(),
-                             sizeof(GA_Size) * owner_stats.num_vacant_per_page.size()));
+        bytesFromRaw(owner_stats.num_vacant_per_page.getRawArray(),
+            sizeof(GA_Size) * owner_stats.num_vacant_per_page.size()));
 
     setObjSteal(d, "active_page_bits",
-                bytesFromRaw(owner_stats.active_page_bits.getRawArray(),
-                             sizeof(PageBits) * owner_stats.active_page_bits.size()));
+        bytesFromRaw(owner_stats.active_page_bits.getRawArray(),
+            sizeof(PageBits) * owner_stats.active_page_bits.size()));
     setObjSteal(d, "temporary_page_bits",
-                bytesFromRaw(owner_stats.temporary_page_bits.getRawArray(),
-                             sizeof(PageBits) * owner_stats.temporary_page_bits.size()));
+        bytesFromRaw(owner_stats.temporary_page_bits.getRawArray(),
+            sizeof(PageBits) * owner_stats.temporary_page_bits.size()));
 
     PY_AutoObject attribs_dict(PY_PyDict_New());
     if (!attribs_dict) return nullptr;
@@ -1095,13 +1111,14 @@ static PY_PyObject* pyDictFromOwnerStats(const OwnerStats& owner_stats, bool wan
 
     if (want_block_ranges)
         setObjSteal(d, "full_block_ranges",
-                    bytesFromRaw(owner_stats.full_block_ranges.getRawArray(),
-                                 sizeof(GA_Offset) * owner_stats.full_block_ranges.size()));
+            bytesFromRaw(owner_stats.full_block_ranges.getRawArray(),
+                sizeof(GA_Offset) * owner_stats.full_block_ranges.size()));
     PY_Py_INCREF(d);
     return d;
 }
 
-PY_PyObject* pyDictFromDetailStats(const DetailStats& report, bool want_block_ranges) {
+PY_PyObject*
+pyDictFromDetailStats(const DetailStats& report, bool want_block_ranges) {
     PY_AutoObject top(PY_PyDict_New());
     if (!top) return nullptr;
 
@@ -1123,10 +1140,10 @@ PY_PyObject* pyDictFromDetailStats(const DetailStats& report, bool want_block_ra
         setI64(memory, "attribute_set_new_memory", report.attribute_set_new_memory);
         setI64(memory, "attribute_set_unique_memory", report.attribute_set_unique_memory);
         setI64(memory, "attribute_set_overhead_memory", report.attribute_set_overhead_memory);
-        setI64(memory, "attribute_set_overhead_new_memory",
-               report.attribute_set_overhead_new_memory);
+        setI64(
+            memory, "attribute_set_overhead_new_memory", report.attribute_set_overhead_new_memory);
         setI64(memory, "attribute_set_overhead_unique_memory",
-               report.attribute_set_overhead_unique_memory);
+            report.attribute_set_overhead_unique_memory);
         setI64(memory, "index_maps_total_memory", report.index_maps_total_memory);
         setI64(memory, "index_maps_new_memory", report.index_maps_new_memory);
         setI64(memory, "index_maps_unique_memory", report.index_maps_unique_memory);
@@ -1176,15 +1193,15 @@ PY_PyObject* pyDictFromDetailStats(const DetailStats& report, bool want_block_ra
     setI64(top, "per_page_count_bytes", static_cast<int64>(sizeof(GA_Size)));
     setI64(top, "page_word_bytes", static_cast<int64>(sizeof(UT_BitArray::BlockType)));
     setI64(top, "page_occupancy_words_per_page",
-           static_cast<int64>(sizeof(PageBits) / sizeof(uint32)));
+        static_cast<int64>(sizeof(PageBits) / sizeof(uint32)));
 
     PY_AutoObject owners(PY_PyDict_New());
     if (!owners) return nullptr;
 
     for (GA_AttributeOwner owner : ALL_OWNERS) {
         const OwnerStats& owner_stats = report.owner_stats[owner];
-        setObjSteal(owners, ownerLabel(owner),
-                    pyDictFromOwnerStats(owner_stats, want_block_ranges));
+        setObjSteal(
+            owners, ownerLabel(owner), pyDictFromOwnerStats(owner_stats, want_block_ranges));
     }
     PY_PyDict_SetItemString(top, "owners", owners);
 
@@ -1192,7 +1209,8 @@ PY_PyObject* pyDictFromDetailStats(const DetailStats& report, bool want_block_ra
     return top;
 }
 
-PY_PyObject* gatherGeometryStats(const char* node_path, bool block_ranges, int output_index) {
+PY_PyObject*
+gatherGeometryStats(const char* node_path, bool block_ranges, int output_index) {
     DetailStats report;
     gatherDetailStats(node_path, block_ranges, output_index, report);
     return pyDictFromDetailStats(report, block_ranges);
@@ -1201,9 +1219,10 @@ PY_PyObject* gatherGeometryStats(const char* node_path, bool block_ranges, int o
 }  // namespace page_tools
 
 // Exception handling, see $HT/samples/HOM/_hdk_sample_hom_extensions.C
-static PY_PyObject* createHouException(const char*   exception_class_name,
-                                       const char*   instance_message,
-                                       PY_PyObject*& exception_class) {
+static PY_PyObject*
+createHouException(const char* exception_class_name,
+    const char*                instance_message,
+    PY_PyObject*&              exception_class) {
     exception_class = nullptr;
 
     PY_AutoObject hou_module(PY_PyImport_ImportModule("hou"));
@@ -1222,7 +1241,8 @@ static PY_PyObject* createHouException(const char*   exception_class_name,
 }
 
 // Wrapper to handle exceptions, see $HT/samples/HOM/_hdk_sample_hom_extensions.C
-static PY_PyObject* report_Wrapper(PY_PyObject* /*self*/, PY_PyObject* args) {
+static PY_PyObject*
+report_Wrapper(PY_PyObject* /*self*/, PY_PyObject* args) {
     const char* node_path    = nullptr;
     int         block_ranges = 0;  // 'p' (0/1)
     int         output_index = page_tools::OUTPUT_FROM_VIEW;
@@ -1244,21 +1264,22 @@ static PY_PyObject* report_Wrapper(PY_PyObject* /*self*/, PY_PyObject* args) {
         PY_PyErr_SetObject(exception_class, exception_instance);
         return nullptr;
     } catch (...) {
-        PY_PyErr_SetString(PY_PyExc_RuntimeError(),
-                           "Unexpected C++ exception in _page_tools.report()");
+        PY_PyErr_SetString(
+            PY_PyExc_RuntimeError(), "Unexpected C++ exception in _page_tools.report()");
         return nullptr;
     }
 }
 
 // Main entry point, refer to $HT/samples/HOM/_hdk_sample_hom_extensions.C
-PY_PyMODINIT_FUNC PyInit__page_tools(void) {
+PY_PyMODINIT_FUNC
+PyInit__page_tools(void) {
     PY_PyObject* module = nullptr;
     {
         PY_InterpreterAutoLock interpreter_auto_lock;
 
         static PY_PyMethodDef  methods[] = {
             {"report", report_Wrapper, PY_METH_VARARGS(),
-              "report(node_path, block_ranges=False, output_index=<view flag>) -> "},
+                 "report(node_path, block_ranges=False, output_index=<view flag>) -> "},
             {nullptr, nullptr, 0, nullptr}};
 
         module = PY_Py_InitModule("_page_tools", methods);
