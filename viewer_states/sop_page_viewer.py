@@ -73,14 +73,14 @@ class SOPPageViewerState(object):
             return
         new_geo = hou.Geometry()
         report_geo = hou.Geometry()
-        report = shadeops_hom.geo_page_report(
+        report = page_tools.report(
             self.node.path(),
-            self.geo_page_owner,
             True,
         )
         page_tools.page_report_to_attribs(
             report_geo,
             report,
+            self.geo_page_owner,
             self.geo_page_public,
             self.geo_page_private,
             self.geo_page_groups,
@@ -134,7 +134,7 @@ def createViewerStateTemplate():
     menu.addRadioStrip("geo_page_owner", "Owner", "point")
     menu.addRadioStripItem("geo_page_owner", "vertex", "Vertex")
     menu.addRadioStripItem("geo_page_owner", "point", "Point")
-    menu.addRadioStripItem("geo_page_owner", "prim", "Primitive")
+    menu.addRadioStripItem("geo_page_owner", "primitive", "Primitive")
     menu.addRadioStripItem("geo_page_owner", "detail", "Detail")
     menu.addSeparator()
     menu.addRadioStrip("geo_page_display", "Page Display", "status")
