@@ -34,10 +34,13 @@
 //
 //      # This is the SOP's countMemory report minus the various measured countMemory stats
 //      # that are accessible.
-//      # This excess will be the ga_TailInitializeTable which is mainly(?) used for groups
-//      # to set default values for values past the offset_size and constant pages
-//      # There is no public interface to countMemory, but we can estimate it from the
-//      # number of tail initializers
+//      # There is no public interface for countMemory in ga_TailInitializeTable so if there
+//      # is some residual it is likely due to the ga_TailInitializeTable. (The ga_TailInitializeTable
+//      # is used by groups to set default values past the offset_size.) This is why we record if
+//      # 'num_tail_initializers' as a possible signal to the cause of the residual.
+//      # If we encounter a residual > 0 and 'num_tail_initializers' is zero
+//      # that is an unexpected circumstance. (As a side note, ga_TailInitializeTable
+//      # can be used for any attribute, but in practice is just for attribute based groups.)
 //
 //      'residual_total_memory': int,
 //      'residual_new_memory': int,
