@@ -71,10 +71,7 @@ class SOPPageViewerState(object):
             return
         new_geo = hou.Geometry()
         report_geo = hou.Geometry()
-        report = page_tools.report(
-            self.node.path(),
-            True,
-        )
+        report = page_tools.report(self.node.path())
         page_tools.page_report_to_attribs(
             report_geo,
             report,
