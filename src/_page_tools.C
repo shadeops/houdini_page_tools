@@ -1302,21 +1302,23 @@ static void
 clearOwnershipForInstanced(DetailStats& report) {
     if (!report.is_instanced) return;
 
-    for (MemoryCounts* counts :
-         {&report.memory,
-          &report.attribs_memory,
-          &report.primitive_list_memory,
-          &report.attribute_set_memory,
-          &report.index_maps_memory,
-          &report.group_tables_memory,
-          &report.gu_detail_memory,
-          &report.residual_memory})
+    for (MemoryCounts* counts : {
+             &report.memory,
+             &report.attribs_memory,
+             &report.primitive_list_memory,
+             &report.attribute_set_memory,
+             &report.index_maps_memory,
+             &report.group_tables_memory,
+             &report.gu_detail_memory,
+             &report.residual_memory,
+             &report.edge_group_table.memory,
+             &report.edge_group_table.name_map_memory,
+             &report.primitive_list.memory,
+         })
         counts->zeroNonTotal();
 
     for (int i = 0; i < ELEMENT_GROUP_TABLE_N; ++i)
         report.element_group_table_memory[i].zeroNonTotal();
-
-    report.edge_group_table.memory.zeroNonTotal();
 
     for (DetailStats::EdgeGroupStats& group_stats : report.edge_group_table.groups)
         group_stats.memory.zeroNonTotal();
