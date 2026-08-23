@@ -115,7 +115,7 @@
 //          'full_block_ranges': bytes,        # int64[2] array, [start, end)
 //
 //          'attributes': {
-//              'public | private | group': {
+//              <scope> str : {                # Will be either "public", "private", or "group"
 //                  <attribute_name> str: {
 //                      'type_name': str,      # registered ATI type, e.g. "numeric"
 //                      'scope': str,          # 'public | private | group'
@@ -133,12 +133,14 @@
 //                      # We can keep track of what pages are shared with each other.
 //                      # To do so we need to track of who has an interest in the
 //                      # shared page.
-//                      # Always sorted
+//                      # The ordering will always be stable.
 //                      'shares_with_attrib_keys': [
 //                          {'owner': str, 'scope': str, 'name': str},
 //                      ],
 //
-//                     # Provides a mini database of which pages are shared with whom
+//                     # Provides a mini database of which pages are shared with whom,
+//                     # will be None if there is no sharing or if the sharing details
+//                     # are not available.
 //                      'memory_block_sharing': None | {
 //                          # These are internal block ids that will be used to sharing
 //                          # matching.
@@ -183,10 +185,22 @@
 //                          'num_constant_shared_pages': int,
 //
 //                          'constant_page_bits': bytes,    # bitarray (one bit per page)
+//
 //                          # if has_hardened_details is false the values will all be 0
 //                          # and a page bit will either be constant or unknown
 //                          'hardened_page_bits': bytes,    # bitarray (one bit per page)
 //                          'shared_page_bits': bytes,      # bitarray (one bit per page)
+//
+//                          # there are two other easily derivable states that we don't export to
+//                          # keep the export cost down, but if a consumer were to want them they
+//                          # can be derived in the following way.
+//                          # constant_shared_page_bits = shared_page_bits & constant_page_bits
+//                          # 'constant_shared_page_bits' : bytes, # bitarray (one bit per page)
+//                          # unknown_page_bits = ~( constant | hardened | shared)
+//                          # 'unknown_page_bits' : bytes, # bitarray (one bit per page)
+//                          # Note: The bitarrays are exported as whole words, so the bits past
+//                          # num_pages are padding. The complement above will set them and a
+//                          # consumer has to mask back down to num_pages.
 //                      },
 //                  },
 //              },
@@ -1323,7 +1337,6 @@ clearOwnershipForInstanced(DetailStats& report) {
     for (DetailStats::EdgeGroupStats& group_stats : report.edge_group_table.groups)
         group_stats.memory.zeroNonTotal();
 
-    report.primitive_list.memory.zeroNonTotal();
     report.primitive_list.is_data_id_found_in_inputs = true;
     for (PrimTypeStats& type_stats : report.primitive_list.prim_types)
         type_stats.memory.zeroNonTotal();
