@@ -43,8 +43,9 @@
 //      # So if our totals of the parts don't match Houdini's total count it is likely due
 //      # to the uncounted tailInitializers.
 //      # If we encounter residuals > 0, 'num_tail_initializers' is zero
-//      # and no groups have been modified that is unexpected and there might be
-//      # an accounting bug.
+//      # and no groups have been modified or deleted that is unexpected and there might be
+//      # an accounting bug. Additionally if residuals are < 0 that also points to an accounting
+//      # bug that should be reported.
 //      'residual_total_memory': int,
 //      'residual_new_memory': int,
 //      'residual_unique_memory': int,
@@ -69,7 +70,9 @@
 //                      'unique_memory': int,
 //                  },
 //              },
-//              'name_map_memory': int,
+//              'name_map_total_memory': int,
+//              'name_map_new_memory': int,
+//              'name_map_unique_memory': int,
 //          },
 //      },
 //      'group_tables_total_memory': int,
@@ -162,8 +165,10 @@
 //                          # Some apis, like groups, don't provide details on if the pages
 //                          # are hardened or not. In these cases we can only know if they are
 //                          # "constant" or not. So if a page isn't constant and
-//                          "has_hardened_details" # is false, it is in an "unknown" state.
+//                          # "has_hardened_details" is false, then the shared/hardened pages/bits
+//                          # are in an "unknown" state.
 //                          'has_hardened_details': bool,
+//
 //                          'is_page_table_hardened': bool,
 //
 //                          # Our total page counts equal the sum of these three fields
@@ -178,6 +183,8 @@
 //                          'num_constant_shared_pages': int,
 //
 //                          'constant_page_bits': bytes,    # bitarray (one bit per page)
+//                          # if has_hardened_details is false the values will all be 0
+//                          # and a page bit will either be constant or unknown
 //                          'hardened_page_bits': bytes,    # bitarray (one bit per page)
 //                          'shared_page_bits': bytes,      # bitarray (one bit per page)
 //                      },
@@ -470,7 +477,7 @@ struct DetailStats {
 
     struct EdgeGroupTableStats {
         MemoryCounts             memory;
-        int64                    name_map_memory = 0;
+        MemoryCounts             name_map_memory;
         UT_Array<EdgeGroupStats> groups;
     };
 
@@ -1424,7 +1431,7 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
 
         edge_table_stats.groups.setCapacityIfNeeded(edge_table.entries());
 
-        int64 edge_groups_total = 0;
+        MemoryCounts edge_groups_total;
         for (GA_EdgeGroupTable::iterator it = edge_table.beginTraverse();
              it != edge_table.endTraverse();
              ++it) {
@@ -1438,11 +1445,13 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
             UT_MemoryCounterNewSafe edge_group_counter(avoid);
             edge_group->countMemory(edge_group_counter, /*inclusive*/ true);
             edge_group_stats.memory  = memoryCountsFromCounter(edge_group_counter);
-            edge_groups_total       += edge_group_stats.memory.total_bytes;
+            edge_groups_total       += edge_group_stats.memory;
         }
         // No accessor reports the name map, so derive it from the total
-        edge_table_stats.name_map_memory = edge_table_stats.memory.total_bytes - edge_groups_total;
-        UT_ASSERT_MSG(edge_table_stats.name_map_memory >= 0, "name_map_memory less than 0");
+        edge_table_stats.name_map_memory = edge_table_stats.memory - edge_groups_total;
+        UT_ASSERT_MSG(edge_table_stats.name_map_memory.total_bytes >= 0, "name_map total < 0");
+        UT_ASSERT_MSG(edge_table_stats.name_map_memory.new_bytes >= 0, "name_map new < 0");
+        UT_ASSERT_MSG(edge_table_stats.name_map_memory.unique_bytes >= 0, "name_map unique < 0");
 
         report.group_tables_memory += edge_table_stats.memory;
     }
@@ -1874,7 +1883,7 @@ pyDictFromDetailStats(const DetailStats& report) {
                 PY_AutoObject                           d(PY_PyDict_New());
                 if (!d) return nullptr;
                 setMemoryCounts(d, "", edge_table_stats.memory);
-                setI64(d, "name_map_memory", edge_table_stats.name_map_memory);
+                setMemoryCounts(d, "name_map", edge_table_stats.name_map_memory);
 
                 PY_AutoObject edge_groups(PY_PyDict_New());
                 if (!edge_groups) return nullptr;
