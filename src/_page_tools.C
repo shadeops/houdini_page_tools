@@ -432,7 +432,7 @@ struct AttributeStats {
 };
 
 struct PrimitiveListStats {
-    MemoryCounts            memory;
+    MemoryCounts memory;
 
     // Only measurable in a full representation, where the primitives can be
     // measured and subtracted.
@@ -1799,16 +1799,16 @@ pyDictFromPrimitiveListStats(const PrimitiveListStats& prim_list_stats) {
                 setObjSteal(full, "data_structure_overhead", overhead);
             }
 
-    PY_AutoObject types(PY_PyDict_New());
-    for (const PrimTypeStats& type_stats : prim_list_stats.prim_types) {
-        if (!types) break;
-        PY_PyObject* row = PY_PyDict_New();
-        if (!row) break;
-        setI64(row, "type_id", type_stats.type_id);
-        setI64(row, "count", type_stats.count);
-        setMemoryCounts(row, "", type_stats.memory);
-        setObjSteal(types, type_stats.type_name.c_str(), row);
-    }
+            PY_AutoObject types(PY_PyDict_New());
+            for (const PrimTypeStats& type_stats : prim_list_stats.prim_types) {
+                if (!types) break;
+                PY_PyObject* row = PY_PyDict_New();
+                if (!row) break;
+                setI64(row, "type_id", type_stats.type_id);
+                setI64(row, "count", type_stats.count);
+                setMemoryCounts(row, "", type_stats.memory);
+                setObjSteal(types, type_stats.type_name.c_str(), row);
+            }
             if (types) PY_PyDict_SetItemString(full, "primitive_types", types);
 
             PY_PyDict_SetItemString(d, "full_representation", full);
@@ -2062,7 +2062,7 @@ PyInit__page_tools(void) {
             {"report",
              report_Wrapper,
              PY_METH_VARARGS(),
-             "report(node_path, output_index) -> dict"},
+             "report(node_path [, output_index]) -> dict"},
             {nullptr, nullptr, 0, nullptr}
         };
 
