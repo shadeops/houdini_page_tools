@@ -80,6 +80,41 @@
 //      'group_tables_unique_memory': int,
 //  },
 //
+//  'primitive_list': {
+//      'total_memory': int,
+//      'new_memory': int,
+//      'unique_memory': int,
+//
+//      'data_id': int,        # -1 when unset
+//      'is_data_id_found_in_inputs': bool,
+//
+//      # Determines how the primitive list is stored internally, fully or backed by a page array
+//      'is_full_representation': bool,
+//
+//      # Populated if is a full representation, (is_full_representation = True), otherwise None
+//      'full_representation' : None | {
+//          # This is memory usage of the primitive_list minus what is held by the primitive_types
+//          # The reporting could break down this figure more, but there is little influence a user
+//          # could have over it.
+//          'data_structure_overhead': {
+//              'total_memory': int,
+//              'new_memory': int,
+//              'unique_memory': int,
+//          },
+//          'primitive_types': {
+//              <type_name> str: {
+//                  'type_id': int,
+//                  'count': int,
+//                  'total_memory': int,
+//                  'new_memory': int,
+//                  'unique_memory': int,
+//              },
+//          },
+//      },
+//      # Populated if backed by a page array, (is_full_representation = False), otherwise None
+//      'page_details': None | { ... },      # same page_details in attributes below
+//  },
+//
 //  'page_size': int,                          # GA_PAGE_SIZE, needs to be 1024
 //  'per_page_count_bytes': int,               # bytes per entry in num_[active|temporary|vacant]_per_page
 //  'page_word_bytes': int,                    # word size of the per-page masks
@@ -206,29 +241,6 @@
 //              },
 //          },
 //      },
-//  },
-//
-//  'primitive_list': {
-//      'total_memory': int,
-//      'new_memory': int,
-//      'unique_memory': int,
-//
-//      'data_id': int,        # -1 when unset
-//      'is_data_id_found_in_inputs': bool,
-//
-//      # When full representation is false the primitive list is backed by a page array.
-//      'is_full_representation': bool,
-//      # This is only populated when is_full_representation is true
-//      'primitive_types': {
-//          <type_name> str: {
-//              'type_id': int,
-//              'count': int,
-//              'total_memory': int,
-//              'new_memory': int,
-//              'unique_memory': int,
-//          },
-//      },
-//      'page_details': None | { ... },      # same page details as attributes
 //  },
 // }
 // clang-format on
@@ -421,6 +433,11 @@ struct AttributeStats {
 
 struct PrimitiveListStats {
     MemoryCounts            memory;
+
+    // Only measurable in a full representation, where the primitives can be
+    // measured and subtracted.
+    MemoryCounts            data_structure_overhead;
+
     GA_DataId               data_id                    = GA_INVALID_DATAID;
     bool                    is_data_id_found_in_inputs = false;
     bool                    is_full_representation     = false;
@@ -967,8 +984,24 @@ gatherPrimitiveListStats(
          input_data_ids.count(prim_list_stats.data_id) != 0);
 
     prim_list_stats.is_full_representation = prim_list.isFullRepresentation();
-    if (prim_list_stats.is_full_representation)
+    if (prim_list_stats.is_full_representation) {
         gatherPrimitiveTypeStats(gdp, avoid, prim_list_stats.prim_types);
+
+        // The primitives are all we can name inside the list, so what is left after
+        // subtracting them is the list's own storage.
+        MemoryCounts prim_types_total;
+        for (const PrimTypeStats& type_stats : prim_list_stats.prim_types)
+            prim_types_total += type_stats.memory;
+
+        prim_list_stats.data_structure_overhead = prim_list_stats.memory - prim_types_total;
+        UT_ASSERT_MSG(
+            prim_list_stats.data_structure_overhead.total_bytes >= 0, "overhead total < 0"
+        );
+        UT_ASSERT_MSG(prim_list_stats.data_structure_overhead.new_bytes >= 0, "overhead new < 0");
+        UT_ASSERT_MSG(
+            prim_list_stats.data_structure_overhead.unique_bytes >= 0, "overhead unique < 0"
+        );
+    }
 
     PageStats& page_stats  = prim_list_stats.page_stats;
 
@@ -1328,6 +1361,7 @@ clearOwnershipForInstanced(DetailStats& report) {
              &report.edge_group_table.memory,
              &report.edge_group_table.name_map_memory,
              &report.primitive_list.memory,
+             &report.primitive_list.data_structure_overhead,
          })
         counts->zeroNonTotal();
 
@@ -1754,6 +1788,17 @@ pyDictFromPrimitiveListStats(const PrimitiveListStats& prim_list_stats) {
     setBool(d, "is_data_id_found_in_inputs", prim_list_stats.is_data_id_found_in_inputs);
     setBool(d, "is_full_representation", prim_list_stats.is_full_representation);
 
+    if (!prim_list_stats.is_full_representation) {
+        PY_PyDict_SetItemString(d, "full_representation", PY_Py_None());
+    } else {
+        PY_AutoObject full(PY_PyDict_New());
+        if (full) {
+            PY_PyObject* overhead = PY_PyDict_New();
+            if (overhead) {
+                setMemoryCounts(overhead, "", prim_list_stats.data_structure_overhead);
+                setObjSteal(full, "data_structure_overhead", overhead);
+            }
+
     PY_AutoObject types(PY_PyDict_New());
     for (const PrimTypeStats& type_stats : prim_list_stats.prim_types) {
         if (!types) break;
@@ -1764,7 +1809,11 @@ pyDictFromPrimitiveListStats(const PrimitiveListStats& prim_list_stats) {
         setMemoryCounts(row, "", type_stats.memory);
         setObjSteal(types, type_stats.type_name.c_str(), row);
     }
-    if (types) PY_PyDict_SetItemString(d, "primitive_types", types);
+            if (types) PY_PyDict_SetItemString(full, "primitive_types", types);
+
+            PY_PyDict_SetItemString(d, "full_representation", full);
+        }
+    }
 
     setPageDetails(d, prim_list_stats.page_stats);
     return d;
@@ -2013,7 +2062,7 @@ PyInit__page_tools(void) {
             {"report",
              report_Wrapper,
              PY_METH_VARARGS(),
-             "report(node_path, output_index=<view output>) -> dict"},
+             "report(node_path, output_index) -> dict"},
             {nullptr, nullptr, 0, nullptr}
         };
 
