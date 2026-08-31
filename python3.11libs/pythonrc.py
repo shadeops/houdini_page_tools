@@ -1,1 +1,0 @@
-../python3.13libs/pythonrc.py

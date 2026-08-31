@@ -9,7 +9,7 @@ COOK_EVENTS = (
     hou.nodeEventType.BeingDeleted,
 )
 
-import page_tools
+import page_tools_geo
 
 class SOPPageViewerState(object):
     def __init__(self, state_name, scene_viewer):
@@ -71,10 +71,9 @@ class SOPPageViewerState(object):
             return
         new_geo = hou.Geometry()
         report_geo = hou.Geometry()
-        report = page_tools.report(self.node.path())
-        page_tools.page_report_to_attribs(
+        page_tools_geo.page_report_as_attribs(
+            self.node,
             report_geo,
-            report,
             self.geo_page_owner,
             self.geo_page_public,
             self.geo_page_private,
