@@ -4,3 +4,5 @@ backup
 *.so
 __pycache__
 
+tests/_inlinecpp
+scratch
