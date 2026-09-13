@@ -1009,6 +1009,10 @@ gatherPrimitiveListStats(
 
     if (!page_stats.has_details) return;
 
+    // GA_PrimitiveList has two priviate GA_PageArrays, myPrimitiveTypes and myVertexLists.
+    // Only myVertexLists has publically accessible info, so while there are two page
+    // arrays, the report only presents it as a single "primitive_list".
+
     page_stats.has_hardened_details   = false;
     page_stats.is_page_table_hardened = false;
     page_stats.constant_page_bits.setSize(num_pages);
