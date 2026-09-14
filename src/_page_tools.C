@@ -68,6 +68,8 @@
 //                      'total_memory': int,
 //                      'new_memory': int,
 //                      'unique_memory': int,
+//                      'data_id': int,        # -1 when unset
+//                      'is_data_id_found_in_inputs': bool,
 //                  },
 //              },
 //              'name_map_total_memory': int,
@@ -504,6 +506,8 @@ struct DetailStats {
     struct EdgeGroupStats {
         UT_StringHolder name;
         MemoryCounts    memory;
+        GA_DataId       data_id                    = GA_INVALID_DATAID;
+        bool            is_data_id_found_in_inputs = false;
     };
 
     struct EdgeGroupTableStats {
@@ -759,6 +763,17 @@ gatherInputDataIds(const GU_Detail* in_gdp, UT_Set<GA_DataId>& data_ids) {
 
     const GA_DataId prim_list_id = in_gdp->getPrimitiveList().getDataId();
     if (prim_list_id != GA_INVALID_DATAID) data_ids.insert(prim_list_id);
+
+    const GA_EdgeGroupTable& edge_table = in_gdp->edgeGroups();
+    for (GA_EdgeGroupTable::iterator it = edge_table.beginTraverse();
+         it != edge_table.endTraverse();
+         ++it) {
+        const GA_EdgeGroup* edge_group = it.group();
+        if (!edge_group) continue;
+
+        const GA_DataId data_id = edge_group->getDataId();
+        if (data_id != GA_INVALID_DATAID) data_ids.insert(data_id);
+    }
 }
 
 // GA_IndexMap has no page-count accessor, so derive it the way UT_PageArray::numPages does.
@@ -1372,8 +1387,10 @@ clearOwnershipForInstanced(DetailStats& report) {
     for (int i = 0; i < ELEMENT_GROUP_TABLE_N; ++i)
         report.element_group_table_memory[i].zeroNonTotal();
 
-    for (DetailStats::EdgeGroupStats& group_stats : report.edge_group_table.groups)
+    for (DetailStats::EdgeGroupStats& group_stats : report.edge_group_table.groups) {
         group_stats.memory.zeroNonTotal();
+        group_stats.is_data_id_found_in_inputs = true;
+    }
 
     report.primitive_list.is_data_id_found_in_inputs = true;
     for (PrimTypeStats& type_stats : report.primitive_list.prim_types)
@@ -1494,6 +1511,12 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
             edge_table_stats.groups.append();
             DetailStats::EdgeGroupStats& edge_group_stats = edge_table_stats.groups.last();
             edge_group_stats.name                         = it.name();
+
+            edge_group_stats.data_id                      = edge_group->getDataId();
+
+            edge_group_stats.is_data_id_found_in_inputs =
+                (edge_group_stats.data_id != GA_INVALID_DATAID &&
+                 input_data_ids.count(edge_group_stats.data_id) != 0);
 
             UT_MemoryCounterNewSafe edge_group_counter(avoid);
             edge_group->countMemory(edge_group_counter, /*inclusive*/ true);
@@ -1959,6 +1982,8 @@ pyDictFromDetailStats(const DetailStats& report) {
                     PY_AutoObject gd(PY_PyDict_New());
                     if (!gd) return nullptr;
                     setMemoryCounts(gd, "", g.memory);
+                    setI64(gd, "data_id", g.data_id);
+                    setBool(gd, "is_data_id_found_in_inputs", g.is_data_id_found_in_inputs);
                     PY_PyDict_SetItemString(edge_groups, g.name.c_str(), gd);
                 }
                 PY_PyDict_SetItemString(d, "groups", edge_groups);
