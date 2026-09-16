@@ -2,7 +2,7 @@ import array
 import page_tools
 import hou
 
-def prep_page_report(report):
+def prep_page_report(occupancy, num_pages):
 
     assert array.array("l").itemsize == 8
     assert array.array("I").itemsize == 4
@@ -13,30 +13,30 @@ def prep_page_report(report):
         "num_temporary_per_page",
     ):
         tmp = array.array("l")
-        tmp.frombytes(report[k])
-        assert len(tmp) == report["num_pages"]
-        del report[k]
-        report[k] = tmp
+        tmp.frombytes(occupancy[k])
+        assert len(tmp) == num_pages
+        del occupancy[k]
+        occupancy[k] = tmp
 
     for k in (
         "full_block_ranges",
     ):
-        if k not in report:
+        if k not in occupancy:
             continue
         tmp = array.array("l")
-        tmp.frombytes(report[k])
-        del report[k]
-        report[k] = tmp
+        tmp.frombytes(occupancy[k])
+        del occupancy[k]
+        occupancy[k] = tmp
 
     for k in (
         "temporary_page_bits",
         "active_page_bits",
     ):
         tmp = array.array("I")
-        tmp.frombytes(report[k])
-        assert len(tmp) == report["num_pages"] * 32
-        del report[k]
-        report[k] = tmp
+        tmp.frombytes(occupancy[k])
+        assert len(tmp) == num_pages * 32
+        del occupancy[k]
+        occupancy[k] = tmp
 
     #for attrib, stats in report["attrib_stats"].items():
     #    for page_type in ("constant_pages", "hardened_pages"):
@@ -49,40 +49,41 @@ def prep_page_report(report):
     #            del stats[page_type]
     #            stats[page_type] = tmp
 
-    return report
+    return occupancy
 
 def page_report_as_attribs(sop, geo, owner="point", include_public=True, include_private=False, include_groups=False):
 
     full_report = page_tools.report(sop)
 
-    report = full_report["owners"][owner]
+    index_map_report = full_report["index_maps"]["owners"][owner]
+    attributes = full_report["attribute_set"]["owners"][owner]["attributes"]
 
-    num_pages = geo.addAttrib(hou.attribType.Global, "num_pages", 0)
-    geo.setGlobalAttribValue(num_pages, report["num_pages"])
+    num_pages_atr = geo.addAttrib(hou.attribType.Global, "num_pages", 0)
+    geo.setGlobalAttribValue(num_pages_atr, index_map_report["num_pages"])
 
-    if report["num_pages"] == 0:
+    if index_map_report["num_pages"] == 0:
         # empty geometry
         return
 
-    prep_page_report(report)
+    occupancy = prep_page_report(index_map_report["occupancy"], index_map_report["num_pages"])
 
     active_bits = geo.addArrayAttrib(hou.attribType.Global, "active_bits", hou.attribData.Int, 32)
-    geo.setGlobalAttribValue(active_bits, report["active_page_bits"])
+    geo.setGlobalAttribValue(active_bits, occupancy["active_page_bits"])
 
     temporary_bits = geo.addArrayAttrib(hou.attribType.Global, "temporary_bits", hou.attribData.Int, 32)
-    geo.setGlobalAttribValue(temporary_bits, report["temporary_page_bits"])
+    geo.setGlobalAttribValue(temporary_bits, occupancy["temporary_page_bits"])
 
     offset_size = geo.addAttrib(hou.attribType.Global, "offset_size", 0)
-    geo.setGlobalAttribValue(offset_size, report["offset_size"])
+    geo.setGlobalAttribValue(offset_size, index_map_report["offset_size"])
 
     index_size = geo.addAttrib(hou.attribType.Global, "index_size", 0)
-    geo.setGlobalAttribValue(index_size, report["index_size"])
+    geo.setGlobalAttribValue(index_size, index_map_report["index_size"])
 
     monotonic_map = geo.addAttrib(hou.attribType.Global, "monotonic_map", 0)
-    geo.setGlobalAttribValue(monotonic_map, report["is_monotonic"])
+    geo.setGlobalAttribValue(monotonic_map, index_map_report["is_monotonic"])
 
     trivial_map = geo.addAttrib(hou.attribType.Global, "trivial_map", 0)
-    geo.setGlobalAttribValue(trivial_map, report["is_trivial"])
+    geo.setGlobalAttribValue(trivial_map, index_map_report["is_trivial"])
 
     owner_atr = geo.addAttrib(hou.attribType.Global, "owner", "")
     geo.setGlobalAttribValue(owner_atr, owner)
@@ -93,14 +94,14 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
     constant_pages = array.array("i")
     hardened_pages = array.array("i")
     # padding for attributes that don't have page data available
-    empty_pages = array.array("i", [0,] * report["page_mask_words"] )
+    empty_pages = array.array("i", [0,] * occupancy["page_mask_words"] )
     scope_filter = (
         "public" if include_public else None,
         "private" if include_private else None,
         "group" if include_groups else None,
     )
     attribs_reported = 0
-    for scope, attribs in report["attributes"].items():
+    for scope, attribs in attributes.items():
         if scope not in scope_filter:
             continue
         for k,v in attribs.items():
@@ -129,10 +130,10 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
 
     # We double the array size here because constant_page_words is with respect to a exint (u64) but
     # we are converting the array to u32[2] for VEX reasons.
-    constant_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "constant_pages", hou.attribData.Int, report["page_mask_words"]*2)
+    constant_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "constant_pages", hou.attribData.Int, occupancy["page_mask_words"]*2)
     geo.setGlobalAttribValue(constant_pages_atr, constant_pages)
 
-    hardened_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "hardened_pages", hou.attribData.Int, report["page_mask_words"]*2)
+    hardened_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "hardened_pages", hou.attribData.Int, occupancy["page_mask_words"]*2)
     geo.setGlobalAttribValue(hardened_pages_atr, hardened_pages)
 
     page_info_atr = geo.addArrayAttrib(hou.attribType.Global, "page_info", hou.attribData.Int, 1)
@@ -142,9 +143,9 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
     geo.setGlobalAttribValue(attribs_reported_atr, attribs_reported)
 
     page_words_atr = geo.addAttrib(hou.attribType.Global, "page_words", 0)
-    geo.setGlobalAttribValue(page_words_atr, report["page_mask_words"]*2)
+    geo.setGlobalAttribValue(page_words_atr, occupancy["page_mask_words"]*2)
 
-    if "full_block_ranges" in report:
+    if "full_block_ranges" in occupancy:
         full_block_ranges_atr = geo.addArrayAttrib(hou.attribType.Global, "full_block_ranges", hou.attribData.Int, 2)
-        geo.setGlobalAttribValue(full_block_ranges_atr, report["full_block_ranges"])
+        geo.setGlobalAttribValue(full_block_ranges_atr, occupancy["full_block_ranges"])
 

@@ -11,81 +11,115 @@
 //
 //  'num_tail_initializers': int,
 //
-//  'total_memory': int,
-//  'new_memory': int,
-//  'unique_memory': int,
+//  'memory': {'total': int, 'new': int, 'unique': int},
 //
-//  'memory': {
-//      # all the attributes in the detail, deduplicated
-//      'attributes_total_memory': int,
-//      'attributes_new_memory': int,
-//      'attributes_unique_memory': int,
+//  'attribute_set': {
+//      # all the attributes in the detail, deduplicated, plus this branch's own overhead
+//      'memory': {'total': int, 'new': int, 'unique': int},
 //
-//      'primitive_list_total_memory': int,
-//      'primitive_list_new_memory': int,
-//      'primitive_list_unique_memory': int,
+//      'owners': {
+//          'point | primitive | vertex | detail': {
+//              'memory': {'total': int, 'new': int, 'unique': int},
 //
-//      'attribute_set_total_memory': int,
-//      'attribute_set_new_memory': int,
-//      'attribute_set_unique_memory': int,
+//              'attributes': {
+//                  <scope> str : {                # Will be either "public", "private", or "group"
+//                      <attribute_name> str: {
+//                          'type_name': str,      # registered ATI type, e.g. "numeric"
+//                          'scope': str,          # 'public | private | group'
+//                          'tuple_size': int,
 //
-//      'index_maps_total_memory': int,
-//      'index_maps_new_memory': int,
-//      'index_maps_unique_memory': int,
+//                          'memory': {'total': int, 'new': int, 'unique': int},
 //
-//      'gu_detail_total_memory': int,
-//      'gu_detail_new_memory': int,
-//      'gu_detail_unique_memory': int,
+//                          # Attributes can share their pages across the same attribute
+//                          # or other attributes (even in different owners)
+//                          # We use this to reconcile the totals
+//                          'intra_detail_memory_sharing': int,
 //
-//      # This is the SOP's countMemory report minus the various measured countMemory stats
-//      # that are accessible.
-//      # There is no interface for countMemory in ga_TailInitializeTable
-//      # So if our totals of the parts don't match Houdini's total count it is likely due
-//      # to the uncounted tailInitializers.
-//      # If we encounter residuals > 0, 'num_tail_initializers' is zero
-//      # and no groups have been modified or deleted that is unexpected and there might be
-//      # an accounting bug. Additionally if residuals are < 0 that also points to an accounting
-//      # bug that should be reported.
-//      'residual_total_memory': int,
-//      'residual_new_memory': int,
-//      'residual_unique_memory': int,
+//                          # We can keep track of what pages are shared with each other.
+//                          # To do so we need to track of who has an interest in the
+//                          # shared page.
+//                          # The ordering will always be stable.
+//                          'shares_with_attrib_keys': [
+//                              {'owner': str, 'scope': str, 'name': str},
+//                          ],
 //
-//      'group_tables': {
-//          'point | primitive | vertex': {
-//              'total_memory': int,
-//              'new_memory': int,
-//              'unique_memory': int,
-//          },
+//                         # Provides a mini database of which pages are shared with whom,
+//                         # will be None if there is no sharing or if the sharing details
+//                         # are not available.
+//                          'memory_block_sharing': None | {
+//                              # These are internal block ids that will be used to sharing
+//                              # matching.
+//                              'memory_block_ids': bytes,           # uint32 per page
+//                              # A index into "shares_with_mapping"
+//                              'shares_with_mapping_indices': bytes,  # uint32 per page
+//                              # A list of indices of matching attribute keys
+//                              # Inner list of shares_with_attrib_key indices are sorted
+//                              'shares_with_mapping': [[shares_with_attrib_key index, ...], ...],
+//                          },
 //
-//          # Edges aren't stored like the other groups, which are attribute based.
-//          # They are not page backed and are stored directly in the group table.
-//          'edge': {
-//              'total_memory': int,
-//              'new_memory': int,
-//              'unique_memory': int,
-//              'groups': {
-//                  <edge_group_name> str: {
-//                      'total_memory': int,
-//                      'new_memory': int,
-//                      'unique_memory': int,
-//                      'data_id': int,        # -1 when unset
-//                      'is_data_id_found_in_inputs': bool,
+//                          'is_data_id_found_in_inputs': bool,
+//
+//                          # Only groups seem to be tail_initialized in practice
+//                          'is_tail_initialized': bool,
+//
+//                          'data_id': int,        # -1 when unset
+//
+//                          # While almost all attributes are backed by pages, many attribute
+//                          # types do not expose their page tables via a public interface,
+//                          # so we can not count them. (Array, blob, index-pair attributes for example)
+//                          # We only provide page details for those types with a public interface.
+//                          'page_details': None | {
+//                              # Some apis, like groups, don't provide details on if the pages
+//                              # are hardened or not. In these cases we can only know if they are
+//                              # "constant" or not. So if a page isn't constant and
+//                              # "has_hardened_details" is false, then the shared/hardened pages/bits
+//                              # are in an "unknown" state.
+//                              'has_hardened_details': bool,
+//
+//                              'is_page_table_hardened': bool,
+//
+//                              # Our total page counts equal the sum of these three fields
+//                              # if has_hardened_details is true
+//                              'num_constant_pages': int,
+//                              'num_shared_pages': int,
+//                              'num_hardened_pages': int,
+//
+//                              # This is a special case of a "constant" page where it is
+//                              # also shared under certain conditions (a tuple at least
+//                              # sizeof(PageTableEntry) wide, and not all zero).
+//                              'num_constant_shared_pages': int,
+//
+//                              'constant_page_bits': bytes,    # bitarray (one bit per page)
+//
+//                              # if has_hardened_details is false the values will all be 0
+//                              # and a page bit will either be constant or unknown
+//                              'hardened_page_bits': bytes,    # bitarray (one bit per page)
+//                              'shared_page_bits': bytes,      # bitarray (one bit per page)
+//
+//                              # there are two other easily derivable states that we don't export to
+//                              # keep the export cost down, but if a consumer were to want them they
+//                              # can be derived in the following way.
+//                              # constant_shared_page_bits = shared_page_bits & constant_page_bits
+//                              # 'constant_shared_page_bits' : bytes, # bitarray (one bit per page)
+//                              # unknown_page_bits = ~( constant | hardened | shared)
+//                              # 'unknown_page_bits' : bytes, # bitarray (one bit per page)
+//                              # Note: The bitarrays are exported as whole words, so the bits past
+//                              # num_pages are padding. The complement above will set them and a
+//                              # consumer has to mask back down to num_pages.
+//                          },
+//                      },
 //                  },
 //              },
-//              'name_map_total_memory': int,
-//              'name_map_new_memory': int,
-//              'name_map_unique_memory': int,
 //          },
 //      },
-//      'group_tables_total_memory': int,
-//      'group_tables_new_memory': int,
-//      'group_tables_unique_memory': int,
+//
+//      'data_structure_overhead': {
+//          'memory': {'total': int, 'new': int, 'unique': int},
+//      },
 //  },
 //
 //  'primitive_list': {
-//      'total_memory': int,
-//      'new_memory': int,
-//      'unique_memory': int,
+//      'memory': {'total': int, 'new': int, 'unique': int},
 //
 //      'data_id': int,        # -1 when unset
 //      'is_data_id_found_in_inputs': bool,
@@ -94,155 +128,103 @@
 //      'is_full_representation': bool,
 //
 //      # Populated if is a full representation, (is_full_representation = True), otherwise None
-//      'full_representation' : None | {
-//          # This is memory usage of the primitive_list minus what is held by the primitive_types
-//          # The reporting could break down this figure more, but there is little influence a user
-//          # could have over it.
-//          'data_structure_overhead': {
-//              'total_memory': int,
-//              'new_memory': int,
-//              'unique_memory': int,
-//          },
-//          'primitive_types': {
-//              <type_name> str: {
-//                  'type_id': int,
-//                  'count': int,
-//                  'total_memory': int,
-//                  'new_memory': int,
-//                  'unique_memory': int,
-//              },
+//      # This is memory usage of the primitive_list minus what is held by the primitive_types
+//      # The reporting could break down this figure more, but there is little influence a user
+//      # could have over it.
+//      'data_structure_overhead': None | {
+//          'memory': {'total': int, 'new': int, 'unique': int},
+//      },
+//      # Populated if is a full representation, (is_full_representation = True), otherwise None
+//      'primitive_types': None | {
+//          <type_name> str: {
+//              'type_id': int,
+//              'count': int,
+//              'memory': {'total': int, 'new': int, 'unique': int},
 //          },
 //      },
 //      # Populated if backed by a page array, (is_full_representation = False), otherwise None
-//      'page_details': None | { ... },      # same page_details in attributes below
+//      'page_details': None | { ... },      # same page_details in attributes above
 //  },
 //
-//  'page_size': int,                          # GA_PAGE_SIZE, needs to be 1024
-//  'per_page_count_bytes': int,               # bytes per entry in num_[active|temporary|vacant]_per_page
-//  'page_word_bytes': int,                    # word size of the per-page masks
-//  'page_occupancy_words_per_page': int,      # uint32 words per page in the occupancy masks
-//
 //  # Index Maps
-//  'owners': {
-//      'point | primitive | vertex | detail': {
-//          'owner': int,                      # enum of owner
-//          'offset_size': int,
-//          'index_size': int,
-//          'num_pages': int,
+//  'index_maps': {
+//      'memory': {'total': int, 'new': int, 'unique': int},
 //
-//          'is_monotonic': bool,
-//          'is_trivial': bool,
+//      'owners': {
+//          'point | primitive | vertex | detail': {
+//              'owner': int,                      # enum of owner
+//              'offset_size': int,
+//              'index_size': int,
+//              'num_pages': int,
 //
-//          # These will be 0 if the Index Map is trivial, since it doesn't
-//          # need to be allocated on the heap
-//          'index_map_total_memory': int,
-//          'index_map_new_memory': int,
-//          'index_map_unique_memory': int,
+//              'is_monotonic': bool,
+//              'is_trivial': bool,
 //
-//          'attributes_total_memory': int,
-//          'attributes_new_memory': int,
-//          'attributes_unique_memory': int,
+//              # These will be 0 if the Index Map is trivial, since it doesn't
+//              # need to be allocated on the heap
+//              'memory': {'total': int, 'new': int, 'unique': int},
 //
-//          'page_mask_words': int,
-//          'num_active_per_page': bytes,      # i64 array, one element per page
-//          'num_temporary_per_page': bytes,   # i64 array, one element per page
-//          'num_vacant_per_page': bytes,      # i64 array, one element per page
-//          'active_page_bits': bytes,         # bitarray, one bit per page offset, uint32[32]
-//          'temporary_page_bits': bytes,      # bitarray, one bit per page offset, uint32[32]
-//          'full_block_ranges': bytes,        # int64[2] array, [start, end)
-//
-//          'attributes': {
-//              <scope> str : {                # Will be either "public", "private", or "group"
-//                  <attribute_name> str: {
-//                      'type_name': str,      # registered ATI type, e.g. "numeric"
-//                      'scope': str,          # 'public | private | group'
-//                      'tuple_size': int,
-//
-//                      'total_memory': int,
-//                      'unique_memory': int,
-//                      'new_memory': int,
-//
-//                      # Attributes can share their pages across the same attribute
-//                      # or other attributes (even in different owners)
-//                      # We use this to reconcile the totals
-//                      'intra_detail_sharing_memory': int,
-//
-//                      # We can keep track of what pages are shared with each other.
-//                      # To do so we need to track of who has an interest in the
-//                      # shared page.
-//                      # The ordering will always be stable.
-//                      'shares_with_attrib_keys': [
-//                          {'owner': str, 'scope': str, 'name': str},
-//                      ],
-//
-//                     # Provides a mini database of which pages are shared with whom,
-//                     # will be None if there is no sharing or if the sharing details
-//                     # are not available.
-//                      'memory_block_sharing': None | {
-//                          # These are internal block ids that will be used to sharing
-//                          # matching.
-//                          'memory_block_ids': bytes,           # uint32 per page
-//                          # A index into "shares_with_mapping"
-//                          'shares_with_mapping_indices': bytes,  # uint32 per page
-//                          # A list of indices of matching attribute keys
-//                          # Inner list of shares_with_attrib_key indices are sorted
-//                          'shares_with_mapping': [[shares_with_attrib_key index, ...], ...],
-//                      },
-//
-//                      'is_data_id_found_in_inputs': bool,
-//
-//                      # Only groups seem to be tail_initialized in practice
-//                      'is_tail_initialized': bool,
-//
-//                      'data_id': int,        # -1 when unset
-//
-//                      # While almost all attributes are backed by pages, many attribute
-//                      # types do not expose their page tables via a public interface,
-//                      # so we can not count them. (Array, blob, index-pair attributes for example)
-//                      # We only provide page details for those types with a public interface.
-//                      'page_details': None | {
-//                          # Some apis, like groups, don't provide details on if the pages
-//                          # are hardened or not. In these cases we can only know if they are
-//                          # "constant" or not. So if a page isn't constant and
-//                          # "has_hardened_details" is false, then the shared/hardened pages/bits
-//                          # are in an "unknown" state.
-//                          'has_hardened_details': bool,
-//
-//                          'is_page_table_hardened': bool,
-//
-//                          # Our total page counts equal the sum of these three fields
-//                          # if has_hardened_details is true
-//                          'num_constant_pages': int,
-//                          'num_shared_pages': int,
-//                          'num_hardened_pages': int,
-//
-//                          # This is a special case of a "constant" page where it is
-//                          # also shared under certain conditions (a tuple at least
-//                          # sizeof(PageTableEntry) wide, and not all zero).
-//                          'num_constant_shared_pages': int,
-//
-//                          'constant_page_bits': bytes,    # bitarray (one bit per page)
-//
-//                          # if has_hardened_details is false the values will all be 0
-//                          # and a page bit will either be constant or unknown
-//                          'hardened_page_bits': bytes,    # bitarray (one bit per page)
-//                          'shared_page_bits': bytes,      # bitarray (one bit per page)
-//
-//                          # there are two other easily derivable states that we don't export to
-//                          # keep the export cost down, but if a consumer were to want them they
-//                          # can be derived in the following way.
-//                          # constant_shared_page_bits = shared_page_bits & constant_page_bits
-//                          # 'constant_shared_page_bits' : bytes, # bitarray (one bit per page)
-//                          # unknown_page_bits = ~( constant | hardened | shared)
-//                          # 'unknown_page_bits' : bytes, # bitarray (one bit per page)
-//                          # Note: The bitarrays are exported as whole words, so the bits past
-//                          # num_pages are padding. The complement above will set them and a
-//                          # consumer has to mask back down to num_pages.
-//                      },
-//                  },
+//              'occupancy': {
+//                  'page_mask_words': int,
+//                  'num_active_per_page': bytes,      # i64 array, one element per page
+//                  'num_temporary_per_page': bytes,   # i64 array, one element per page
+//                  'num_vacant_per_page': bytes,      # i64 array, one element per page
+//                  'active_page_bits': bytes,         # bitarray, one bit per page offset, uint32[32]
+//                  'temporary_page_bits': bytes,      # bitarray, one bit per page offset, uint32[32]
+//                  'full_block_ranges': bytes,        # int64[2] array, [start, end)
 //              },
 //          },
 //      },
+//  },
+//
+//  'group_tables': {
+//      'memory': {'total': int, 'new': int, 'unique': int},
+//
+//      'tables': {
+//          'point | primitive | vertex': {
+//              'memory': {'total': int, 'new': int, 'unique': int},
+//          },
+//
+//          # Edges aren't stored like the other groups, which are attribute based.
+//          # They are not page backed and are stored directly in the group table.
+//          'edge': {
+//              'memory': {'total': int, 'new': int, 'unique': int},
+//              'groups': {
+//                  <edge_group_name> str: {
+//                      'memory': {'total': int, 'new': int, 'unique': int},
+//                      'data_id': int,        # -1 when unset
+//                      'is_data_id_found_in_inputs': bool,
+//                  },
+//              },
+//              'data_structure_overhead': {
+//                  'memory': {'total': int, 'new': int, 'unique': int},
+//              },
+//          },
+//      },
+//  },
+//
+//  'detail_object': {
+//      'memory': {'total': int, 'new': int, 'unique': int},
+//  },
+//
+//  # This is the SOP's countMemory report minus the various measured countMemory stats
+//  # that are accessible.
+//  # There is no interface for countMemory in ga_TailInitializeTable
+//  # So if our totals of the parts don't match Houdini's total count it is likely due
+//  # to the uncounted tailInitializers.
+//  # If we encounter residuals > 0, 'num_tail_initializers' is zero
+//  # and no groups have been modified or deleted that is unexpected and there might be
+//  # an accounting bug. Additionally if residuals are < 0 that also points to an accounting
+//  # bug that should be reported.
+//  'unaccounted': {
+//      'memory': {'total': int, 'new': int, 'unique': int},
+//  },
+//
+//  'page_layout': {
+//      'page_size': int,                          # GA_PAGE_SIZE, needs to be 1024
+//      'per_page_count_bytes': int,               # bytes per entry in num_[active|temporary|vacant]_per_page
+//      'page_word_bytes': int,                    # word size of the per-page masks
+//      'page_occupancy_words_per_page': int,      # uint32 words per page in the occupancy masks
 //  },
 // }
 // clang-format on
@@ -290,7 +272,6 @@
 #include <UT/UT_Set.h>
 #include <UT/UT_Storage.h>
 #include <UT/UT_StringHolder.h>
-#include <UT/UT_WorkBuffer.h>
 
 #include <string>
 
@@ -415,7 +396,7 @@ struct AttributeStats {
     int                           tuple_size = 0;
 
     MemoryCounts                  memory;
-    int64                         intra_detail_sharing_memory = 0;
+    int64                         intra_detail_memory_sharing = 0;
 
     UT_Array<SharesWithAttribKey> shares_with_attrib_keys;
 
@@ -447,30 +428,42 @@ struct PrimitiveListStats {
     PageStats               page_stats;
 };
 
-struct OwnerStats {
-    GA_AttributeOwner owner       = GA_ATTRIB_POINT;
-    GA_Offset         offset_size = GA_Offset(0);
-    GA_Index          index_size  = GA_Index(0);
-    GA_Size           num_pages   = 0;
+struct IndexMapStats {
+    GA_AttributeOwner   owner       = GA_ATTRIB_POINT;
+    GA_Offset           offset_size = GA_Offset(0);
+    GA_Index            index_size  = GA_Index(0);
+    GA_Size             num_pages   = 0;
 
-    MemoryCounts      index_map_memory;
+    MemoryCounts        memory;
 
+    bool                is_monotonic = false;
+    bool                is_trivial   = false;
+
+    UT_Array<GA_Size>   num_active_per_page;
+    UT_Array<GA_Size>   num_temporary_per_page;
+    UT_Array<GA_Size>   num_vacant_per_page;
+    UT_Array<PageBits>  active_page_bits;
+    UT_Array<PageBits>  temporary_page_bits;
+
+    UT_Array<GA_Offset> full_block_ranges;
+};
+
+struct AttributeSetOwnerStats {
     // De-duplicated, measured by this owner's DedupedMemoryCounts rather than summed
     // back out of the attribute rows.
-    MemoryCounts             attribs_memory;
-
-    bool                     is_monotonic = false;
-    bool                     is_trivial   = false;
-
-    UT_Array<GA_Size>        num_active_per_page;
-    UT_Array<GA_Size>        num_temporary_per_page;
-    UT_Array<GA_Size>        num_vacant_per_page;
-    UT_Array<PageBits>       active_page_bits;
-    UT_Array<PageBits>       temporary_page_bits;
-
-    UT_Array<GA_Offset>      full_block_ranges;
-
+    MemoryCounts             memory;
     UT_Array<AttributeStats> attribs;
+};
+
+struct AttributeSetStats {
+    MemoryCounts           memory;
+    MemoryCounts           data_structure_overhead;  // GA_AttributeSet overhead
+    AttributeSetOwnerStats owners[GA_ATTRIB_OWNER_N];
+};
+
+struct IndexMapsStats {
+    MemoryCounts  memory;
+    IndexMapStats owners[GA_ATTRIB_OWNER_N];
 };
 
 static const int               ELEMENT_GROUP_TABLE_N                             = 3;
@@ -480,51 +473,49 @@ static const GA_AttributeOwner ELEMENT_GROUP_TABLE_OWNERS[ELEMENT_GROUP_TABLE_N]
     GA_ATTRIB_VERTEX
 };
 
+struct EdgeGroupStats {
+    UT_StringHolder name;
+    MemoryCounts    memory;
+    GA_DataId       data_id                    = GA_INVALID_DATAID;
+    bool            is_data_id_found_in_inputs = false;
+};
+
+struct EdgeGroupTableStats {
+    MemoryCounts             memory;
+    MemoryCounts             data_structure_overhead;
+    UT_Array<EdgeGroupStats> groups;
+};
+
+struct GroupTablesStats {
+    MemoryCounts        memory;
+    MemoryCounts        element_group_table_memory[ELEMENT_GROUP_TABLE_N];
+    EdgeGroupTableStats edge_group_table;
+};
+
 struct DetailStats {
     UT_StringHolder node_path;
 
     int             output_index = 0;
     bool            is_instanced = false;
 
-    //   total_memory =
-    //       attributes_total_memory
-    //       + primitive_list_total_memory
-    //       + attribute_set_total_memory
-    //       + index_maps_total_memory
-    //       + group_tables_total_memory
-    //       + gu_detail_total_memory
-    //       + residual_total_memory
+    //   memory =
+    //       attribute_set.memory
+    //       + primitive_list.memory
+    //       + index_maps.memory
+    //       + group_tables.memory
+    //       + gu_detail_memory
+    //       + residual_memory
 
     MemoryCounts       memory;
-    MemoryCounts       attribs_memory;        // deduplicated memory counts
-    MemoryCounts       attribute_set_memory;  // GA_AttributeSet overhead
-    MemoryCounts       primitive_list_memory;
-    MemoryCounts       index_maps_memory;
 
+    AttributeSetStats  attribute_set;
     PrimitiveListStats primitive_list;
+    IndexMapsStats     index_maps;
+    GroupTablesStats   group_tables;
+    MemoryCounts       gu_detail_memory;
+    MemoryCounts       residual_memory;
 
-    struct EdgeGroupStats {
-        UT_StringHolder name;
-        MemoryCounts    memory;
-        GA_DataId       data_id                    = GA_INVALID_DATAID;
-        bool            is_data_id_found_in_inputs = false;
-    };
-
-    struct EdgeGroupTableStats {
-        MemoryCounts             memory;
-        MemoryCounts             name_map_memory;
-        UT_Array<EdgeGroupStats> groups;
-    };
-
-    MemoryCounts        element_group_table_memory[ELEMENT_GROUP_TABLE_N];
-    EdgeGroupTableStats edge_group_table;
-    MemoryCounts        group_tables_memory;
-    MemoryCounts        gu_detail_memory;
-    MemoryCounts        residual_memory;
-
-    GA_Size             num_tail_initializers = 0;
-
-    OwnerStats          owner_stats[GA_ATTRIB_OWNER_N];
+    GA_Size            num_tail_initializers = 0;
 };
 
 // What one shared memory block accumulates during the counting pass.
@@ -586,7 +577,7 @@ struct MemoryBlockTracker {
 
     // To keep track of all the attributes visited we store lookup keys in a continuous
     // array. The lookup key allows us to distinguish the different attributes in
-    // the DetailStats.owner_stats[owner] arrays
+    // the DetailStats.attribute_set.owners[owner].attribs arrays
     // (This results in a weak coupling with DetailStats)
     struct AttribLookupKey {
         GA_AttributeOwner owner = GA_ATTRIB_POINT;
@@ -665,7 +656,7 @@ struct MemoryBlockTracker {
         // negative numbers is undefined.
         const uint64 key = (static_cast<uint64>(static_cast<uint32>(sharing_set_id)) << 32) |
                            static_cast<uint32>(tracker_index);
-        auto         it  = sharing_set_transitions.find(key);
+        auto it = sharing_set_transitions.find(key);
         if (it != sharing_set_transitions.end()) return it->second;
 
         UT_Array<int32> next_sharing_set;
@@ -1048,44 +1039,44 @@ gatherPrimitiveListStats(
 
 // Per-owner index-map stats + per-page occupancy (counts + intra-page bitmasks).
 static void
-gatherOwnerStats(
+gatherIndexMapStats(
     const GU_Detail*                 gdp,
     GA_AttributeOwner                owner,
     const UT::ArraySet<const void*>& avoid,
-    OwnerStats&                      owner_stats
+    IndexMapStats&                   index_map_stats
 ) {
     const GA_IndexMap& index_map = gdp->getIndexMap(owner);
-    owner_stats.owner            = owner;
-    owner_stats.offset_size      = index_map.offsetSize();
-    owner_stats.index_size       = index_map.indexSize();
+    index_map_stats.owner        = owner;
+    index_map_stats.offset_size  = index_map.offsetSize();
+    index_map_stats.index_size   = index_map.indexSize();
 
     UT_MemoryCounterNewSafe counter(avoid);
     index_map.countMemory(counter, /*inclusive*/ false);
 
-    owner_stats.index_map_memory = memoryCountsFromCounter(counter);
-    owner_stats.is_monotonic     = index_map.isMonotonicMap();
-    owner_stats.is_trivial       = index_map.isTrivialMap();
+    index_map_stats.memory       = memoryCountsFromCounter(counter);
+    index_map_stats.is_monotonic = index_map.isMonotonicMap();
+    index_map_stats.is_trivial   = index_map.isTrivialMap();
 
     const GA_Size num_pages      = numPagesForIndexMap(index_map);
-    owner_stats.num_pages        = num_pages;
-    owner_stats.num_active_per_page.setSize(num_pages);
-    owner_stats.num_temporary_per_page.setSize(num_pages);
-    owner_stats.num_vacant_per_page.setSize(num_pages);
-    owner_stats.active_page_bits.setSize(num_pages);
-    owner_stats.temporary_page_bits.setSize(num_pages);
+    index_map_stats.num_pages    = num_pages;
+    index_map_stats.num_active_per_page.setSize(num_pages);
+    index_map_stats.num_temporary_per_page.setSize(num_pages);
+    index_map_stats.num_vacant_per_page.setSize(num_pages);
+    index_map_stats.active_page_bits.setSize(num_pages);
+    index_map_stats.temporary_page_bits.setSize(num_pages);
 
-    if (owner_stats.is_trivial) {
+    if (index_map_stats.is_trivial) {
         for (GA_Size page = 0; page < num_pages; ++page) {
             const GA_Offset page_start = GA_Offset(page << GA_PAGE_BITS);
             const GA_Offset page_end   = GAgetPageBoundary(page_start, index_map.offsetSize());
             const GA_Size   page_count = page_end - page_start;
 
-            owner_stats.num_active_per_page[page]    = page_count;
-            owner_stats.num_temporary_per_page[page] = 0;
-            owner_stats.num_vacant_per_page[page]    = 0;
+            index_map_stats.num_active_per_page[page]    = page_count;
+            index_map_stats.num_temporary_per_page[page] = 0;
+            index_map_stats.num_vacant_per_page[page]    = 0;
 
-            uint32*       bits                       = owner_stats.active_page_bits[page].bits;
-            const GA_Size full_words                 = page_count >> 5;
+            uint32*       bits       = index_map_stats.active_page_bits[page].bits;
+            const GA_Size full_words = page_count >> 5;
 
             for (GA_Size word = 0; word < full_words; ++word)
                 bits[word] = ~static_cast<uint32>(0);
@@ -1100,8 +1091,8 @@ gatherOwnerStats(
             GA_Size         active     = 0;
             GA_Size         temporary  = 0;
             GA_Size         vacant     = 0;
-            PageBits&       active_page_bits    = owner_stats.active_page_bits[page];
-            PageBits&       temporary_page_bits = owner_stats.temporary_page_bits[page];
+            PageBits&       active_page_bits    = index_map_stats.active_page_bits[page];
+            PageBits&       temporary_page_bits = index_map_stats.temporary_page_bits[page];
             for (GA_Offset offset = page_start; offset < page_end; ++offset) {
                 if (index_map.isOffsetActive(offset)) {
                     setPageBit(active_page_bits.bits, GAgetPageOff(offset));
@@ -1113,17 +1104,17 @@ gatherOwnerStats(
                     ++vacant;
                 }
             }
-            owner_stats.num_active_per_page[page]    = active;
-            owner_stats.num_temporary_per_page[page] = temporary;
-            owner_stats.num_vacant_per_page[page]    = vacant;
+            index_map_stats.num_active_per_page[page]    = active;
+            index_map_stats.num_temporary_per_page[page] = temporary;
+            index_map_stats.num_vacant_per_page[page]    = vacant;
         }
 
     GA_Range  range(index_map);
     GA_Offset start;
     GA_Offset end;
     for (GA_Iterator it(range); it.fullBlockAdvance(start, end);) {
-        owner_stats.full_block_ranges.append(start);
-        owner_stats.full_block_ranges.append(end);
+        index_map_stats.full_block_ranges.append(start);
+        index_map_stats.full_block_ranges.append(end);
     }
 }
 
@@ -1221,10 +1212,10 @@ resolveSharing(const MemoryBlockTracker& tracker, DetailStats& report) {
             const MemoryBlockTracker::AttribLookupKey& attrib_lookup_key =
                 tracker.attrib_keys(sharing_set(i));
 
-            AttributeStats& stats =
-                report.owner_stats[attrib_lookup_key.owner].attribs[attrib_lookup_key.index];
+            AttributeStats& stats = report.attribute_set.owners[attrib_lookup_key.owner]
+                                        .attribs[attrib_lookup_key.index];
 
-            stats.intra_detail_sharing_memory += block.size;
+            stats.intra_detail_memory_sharing += block.size;
 
             for (exint j = 0; j < sharing_set.size(); ++j)
                 if (i != j) shares_with(sharing_set(i)).insert(sharing_set(j));
@@ -1240,7 +1231,7 @@ resolveSharing(const MemoryBlockTracker& tracker, DetailStats& report) {
             tracker.attrib_keys(tracker_index);
 
         AttributeStats& stats =
-            report.owner_stats[attrib_lookup_key.owner].attribs[attrib_lookup_key.index];
+            report.attribute_set.owners[attrib_lookup_key.owner].attribs[attrib_lookup_key.index];
 
         stats.shares_with_attrib_keys.setCapacityIfNeeded(shares_with(tracker_index).size());
 
@@ -1248,7 +1239,7 @@ resolveSharing(const MemoryBlockTracker& tracker, DetailStats& report) {
             const MemoryBlockTracker::AttribLookupKey& shares_with_lookup_key =
                 tracker.attrib_keys(shares_with_tracker_index);
             const AttributeStats& shares_with_stats =
-                report.owner_stats[shares_with_lookup_key.owner]
+                report.attribute_set.owners[shares_with_lookup_key.owner]
                     .attribs[shares_with_lookup_key.index];
 
             UT_Array<SharesWithAttribKey>& keys = stats.shares_with_attrib_keys;
@@ -1275,7 +1266,7 @@ resolveMemoryBlockSharing(const MemoryBlockTracker& tracker, DetailStats& report
     // based on what the tracker found.
     UT::ArrayMap<const void*, MemoryBlockPageUse> block_use;
     for (GA_AttributeOwner owner : ALL_OWNERS) {
-        for (const AttributeStats& attrib_stats : report.owner_stats[owner].attribs) {
+        for (const AttributeStats& attrib_stats : report.attribute_set.owners[owner].attribs) {
             for (const void* block_pointer : attrib_stats.memory_block_pointers) {
                 if (!block_pointer) continue;
                 auto tracked = tracker.memory_blocks.find(block_pointer);
@@ -1293,11 +1284,10 @@ resolveMemoryBlockSharing(const MemoryBlockTracker& tracker, DetailStats& report
     // Iterating this way keeps the order stable, so rerunning will produce the same ids.
     int32 next_block_id = 0;
     for (GA_AttributeOwner owner : ALL_OWNERS) {
-        OwnerStats&   owner_stats = report.owner_stats[owner];
-        const GA_Size num_pages   = owner_stats.num_pages;
+        const GA_Size num_pages = report.index_maps.owners[owner].num_pages;
         if (num_pages <= 0) continue;
 
-        for (AttributeStats& attrib_stats : owner_stats.attribs) {
+        for (AttributeStats& attrib_stats : report.attribute_set.owners[owner].attribs) {
             if (attrib_stats.memory_block_pointers.isEmpty()) continue;
 
             UT_Array<int32>           block_ids;
@@ -1370,24 +1360,23 @@ clearOwnershipForInstanced(DetailStats& report) {
 
     for (MemoryCounts* counts : {
              &report.memory,
-             &report.attribs_memory,
-             &report.primitive_list_memory,
-             &report.attribute_set_memory,
-             &report.index_maps_memory,
-             &report.group_tables_memory,
-             &report.gu_detail_memory,
-             &report.residual_memory,
-             &report.edge_group_table.memory,
-             &report.edge_group_table.name_map_memory,
+             &report.attribute_set.memory,
+             &report.attribute_set.data_structure_overhead,
              &report.primitive_list.memory,
              &report.primitive_list.data_structure_overhead,
+             &report.index_maps.memory,
+             &report.group_tables.memory,
+             &report.group_tables.edge_group_table.memory,
+             &report.group_tables.edge_group_table.data_structure_overhead,
+             &report.gu_detail_memory,
+             &report.residual_memory,
          })
         counts->zeroNonTotal();
 
     for (int i = 0; i < ELEMENT_GROUP_TABLE_N; ++i)
-        report.element_group_table_memory[i].zeroNonTotal();
+        report.group_tables.element_group_table_memory[i].zeroNonTotal();
 
-    for (DetailStats::EdgeGroupStats& group_stats : report.edge_group_table.groups) {
+    for (EdgeGroupStats& group_stats : report.group_tables.edge_group_table.groups) {
         group_stats.memory.zeroNonTotal();
         group_stats.is_data_id_found_in_inputs = true;
     }
@@ -1397,10 +1386,10 @@ clearOwnershipForInstanced(DetailStats& report) {
         type_stats.memory.zeroNonTotal();
 
     for (GA_AttributeOwner owner : ALL_OWNERS) {
-        OwnerStats& owner_stats = report.owner_stats[owner];
-        owner_stats.index_map_memory.zeroNonTotal();
-        owner_stats.attribs_memory.zeroNonTotal();
-        for (AttributeStats& attrib_stats : owner_stats.attribs) {
+        report.index_maps.owners[owner].memory.zeroNonTotal();
+        AttributeSetOwnerStats& attrib_owner_stats = report.attribute_set.owners[owner];
+        attrib_owner_stats.memory.zeroNonTotal();
+        for (AttributeStats& attrib_stats : attrib_owner_stats.attribs) {
             attrib_stats.memory.zeroNonTotal();
             attrib_stats.is_data_id_found_in_inputs = true;
         }
@@ -1486,16 +1475,16 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
         out_gdp->getElementGroupTable(ELEMENT_GROUP_TABLE_OWNERS[i])
             .countMemory(counter, /*inclusive*/ false);
 
-        report.element_group_table_memory[i]  = memoryCountsFromCounter(counter);
-        report.group_tables_memory           += report.element_group_table_memory[i];
+        report.group_tables.element_group_table_memory[i] = memoryCountsFromCounter(counter);
+        report.group_tables.memory += report.group_tables.element_group_table_memory[i];
     }
 
     // MEASURE THE GROUP TABLES FOR EDGES
     {
-        const GA_EdgeGroupTable&          edge_table       = out_gdp->edgeGroups();
-        DetailStats::EdgeGroupTableStats& edge_table_stats = report.edge_group_table;
+        const GA_EdgeGroupTable& edge_table       = out_gdp->edgeGroups();
+        EdgeGroupTableStats&     edge_table_stats = report.group_tables.edge_group_table;
 
-        UT_MemoryCounterNewSafe           counter(avoid);
+        UT_MemoryCounterNewSafe  counter(avoid);
         edge_table.countMemory(counter, /*inclusive*/ false);
         edge_table_stats.memory = memoryCountsFromCounter(counter);
 
@@ -1509,10 +1498,10 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
             if (!edge_group) continue;
 
             edge_table_stats.groups.append();
-            DetailStats::EdgeGroupStats& edge_group_stats = edge_table_stats.groups.last();
-            edge_group_stats.name                         = it.name();
+            EdgeGroupStats& edge_group_stats = edge_table_stats.groups.last();
+            edge_group_stats.name            = it.name();
 
-            edge_group_stats.data_id                      = edge_group->getDataId();
+            edge_group_stats.data_id         = edge_group->getDataId();
 
             edge_group_stats.is_data_id_found_in_inputs =
                 (edge_group_stats.data_id != GA_INVALID_DATAID &&
@@ -1524,29 +1513,33 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
             edge_groups_total       += edge_group_stats.memory;
         }
         // No accessor reports the name map, so derive it from the total
-        edge_table_stats.name_map_memory = edge_table_stats.memory - edge_groups_total;
-        UT_ASSERT_MSG(edge_table_stats.name_map_memory.total_bytes >= 0, "name_map total < 0");
-        UT_ASSERT_MSG(edge_table_stats.name_map_memory.new_bytes >= 0, "name_map new < 0");
-        UT_ASSERT_MSG(edge_table_stats.name_map_memory.unique_bytes >= 0, "name_map unique < 0");
+        edge_table_stats.data_structure_overhead = edge_table_stats.memory - edge_groups_total;
+        UT_ASSERT_MSG(
+            edge_table_stats.data_structure_overhead.total_bytes >= 0, "name_map total < 0"
+        );
+        UT_ASSERT_MSG(edge_table_stats.data_structure_overhead.new_bytes >= 0, "name_map new < 0");
+        UT_ASSERT_MSG(
+            edge_table_stats.data_structure_overhead.unique_bytes >= 0, "name_map unique < 0"
+        );
 
-        report.group_tables_memory += edge_table_stats.memory;
+        report.group_tables.memory += edge_table_stats.memory;
     }
 
     // MEASURE PRIMITIVE LIST MEMORY USAGE
     gatherPrimitiveListStats(out_gdp, avoid, input_data_ids, report.primitive_list);
-    report.primitive_list_memory = report.primitive_list.memory;
 
     MemoryBlockTracker tracker(avoid);
 
     // MEASURE ATTRIBUTE MEMORY USAGE
     for (GA_AttributeOwner owner : ALL_OWNERS) {
-        OwnerStats& owner_stats = report.owner_stats[owner];
-        gatherOwnerStats(out_gdp, owner, avoid, owner_stats);
-        report.index_maps_memory          += owner_stats.index_map_memory;
-        const GA_Size           num_pages  = owner_stats.num_pages;
+        IndexMapStats& index_map_stats = report.index_maps.owners[owner];
+        gatherIndexMapStats(out_gdp, owner, avoid, index_map_stats);
+        report.index_maps.memory                   += index_map_stats.memory;
+        const GA_Size           num_pages           = index_map_stats.num_pages;
 
-        const GA_AttributeDict& dict       = out_gdp->getAttributeDict(owner);
-        owner_stats.attribs.setSize(dict.entries());
+        AttributeSetOwnerStats& attrib_owner_stats  = report.attribute_set.owners[owner];
+        const GA_AttributeDict& dict                = out_gdp->getAttributeDict(owner);
+        attrib_owner_stats.attribs.setSize(dict.entries());
 
         exint attrib_index = 0;
         for (GA_AttributeDict::iterator it = dict.begin(); !it.atEnd(); ++it) {
@@ -1554,7 +1547,7 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
             UT_ASSERT(out_attrib);
             if (!out_attrib) continue;
 
-            AttributeStats& attrib_stats     = owner_stats.attribs[attrib_index];
+            AttributeStats& attrib_stats     = attrib_owner_stats.attribs[attrib_index];
             attrib_stats.name                = out_attrib->getName();
             attrib_stats.owner               = owner;
             attrib_stats.scope               = out_attrib->getScope();
@@ -1574,11 +1567,9 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
 
             ++attrib_index;
         }
-        owner_stats.attribs.setSize(attrib_index);
-        owner_stats.attribs_memory = tracker.owners_attrib_memory[owner];
+        attrib_owner_stats.attribs.setSize(attrib_index);
+        attrib_owner_stats.memory = tracker.owners_attrib_memory[owner];
     }
-    report.attribs_memory = tracker.all_attrib_memory;
-
     resolveSharing(tracker, report);
     resolveMemoryBlockSharing(tracker, report);
 
@@ -1586,7 +1577,7 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
     // here rather than left on the report, where nothing reads them and every attribute
     // would carry eight bytes per page until the report is destroyed.
     for (GA_AttributeOwner owner : ALL_OWNERS)
-        for (AttributeStats& attrib_stats : report.owner_stats[owner].attribs)
+        for (AttributeStats& attrib_stats : report.attribute_set.owners[owner].attribs)
             attrib_stats.memory_block_pointers.clear();
 
     // MEASURE ATTRIBUTE SET MEMORY OVERHEAD
@@ -1595,19 +1586,19 @@ gatherDetailStats(const char* node_path, int output_index, DetailStats& report) 
     {
         UT_MemoryCounterNewSafe attrib_counter(avoid);
         out_gdp->getAttributes().countMemory(attrib_counter, /*inclusive*/ false);
-        report.attribute_set_memory =
-            memoryCountsFromCounter(attrib_counter) - tracker.all_attrib_memory;
+        report.attribute_set.memory = memoryCountsFromCounter(attrib_counter);
+        report.attribute_set.data_structure_overhead =
+            report.attribute_set.memory - tracker.all_attrib_memory;
     }
 
     // The residual is the discrepancy between what we can derive and Houdini's own internal
     // APIs. Currently the only discrepancy source seems to be from the tail initializers
     // for the group attributes.
     report.residual_memory  = report.memory;
-    report.residual_memory -= report.attribs_memory;
-    report.residual_memory -= report.primitive_list_memory;
-    report.residual_memory -= report.attribute_set_memory;
-    report.residual_memory -= report.index_maps_memory;
-    report.residual_memory -= report.group_tables_memory;
+    report.residual_memory -= report.attribute_set.memory;
+    report.residual_memory -= report.primitive_list.memory;
+    report.residual_memory -= report.index_maps.memory;
+    report.residual_memory -= report.group_tables.memory;
     report.residual_memory -= report.gu_detail_memory;
 
     // When we are instanced, we shouldn't report new or unique. This function clears them.
@@ -1628,20 +1619,15 @@ setI64(PY_PyObject* d, const char* k, int64 v) {
     PY_PyDict_SetItemString(d, k, o);
 }
 
-// Helper to set three dictionary keys for our MemoryCounts
+// Helper to set one dictionary key for our MemoryCounts
 static void
-setMemoryCounts(PY_PyObject* d, const char* prefix, const MemoryCounts& counts) {
-    static const char* const fields[3] = {"total", "new", "unique"};
-    const int64 values[3] = {counts.total_bytes, counts.new_bytes, counts.unique_bytes};
-
-    for (int i = 0; i < 3; ++i) {
-        UT_WorkBuffer key;
-        if (prefix && prefix[0])
-            key.sprintf("%s_%s_memory", prefix, fields[i]);
-        else
-            key.sprintf("%s_memory", fields[i]);
-        setI64(d, key.buffer(), values[i]);
-    }
+setMemoryCounts(PY_PyObject* d, const MemoryCounts& counts) {
+    PY_AutoObject node(PY_PyDict_New());
+    if (!node) return;
+    setI64(node, "total", counts.total_bytes);
+    setI64(node, "new", counts.new_bytes);
+    setI64(node, "unique", counts.unique_bytes);
+    PY_PyDict_SetItemString(d, "memory", node);
 }
 
 static void
@@ -1731,8 +1717,8 @@ pyDictFromAttributeStats(const AttributeStats& attrib_stats) {
     setStr(d, "type_name", attrib_stats.type_name.c_str());
     setStr(d, "scope", scopeLabel(attrib_stats.scope));
     setI64(d, "tuple_size", attrib_stats.tuple_size);
-    setMemoryCounts(d, "", attrib_stats.memory);
-    setI64(d, "intra_detail_sharing_memory", attrib_stats.intra_detail_sharing_memory);
+    setMemoryCounts(d, attrib_stats.memory);
+    setI64(d, "intra_detail_memory_sharing", attrib_stats.intra_detail_memory_sharing);
     setBool(d, "is_data_id_found_in_inputs", attrib_stats.is_data_id_found_in_inputs);
     setBool(d, "is_tail_initialized", attrib_stats.is_tail_initialized);
     setI64(d, "data_id", attrib_stats.data_id);
@@ -1810,36 +1796,32 @@ pyDictFromPrimitiveListStats(const PrimitiveListStats& prim_list_stats) {
     PY_PyObject* d = PY_PyDict_New();
     if (!d) return nullptr;
 
-    setMemoryCounts(d, "", prim_list_stats.memory);
+    setMemoryCounts(d, prim_list_stats.memory);
     setI64(d, "data_id", prim_list_stats.data_id);
     setBool(d, "is_data_id_found_in_inputs", prim_list_stats.is_data_id_found_in_inputs);
     setBool(d, "is_full_representation", prim_list_stats.is_full_representation);
 
     if (!prim_list_stats.is_full_representation) {
-        PY_PyDict_SetItemString(d, "full_representation", PY_Py_None());
+        PY_PyDict_SetItemString(d, "data_structure_overhead", PY_Py_None());
+        PY_PyDict_SetItemString(d, "primitive_types", PY_Py_None());
     } else {
-        PY_AutoObject full(PY_PyDict_New());
-        if (full) {
-            PY_PyObject* overhead = PY_PyDict_New();
-            if (overhead) {
-                setMemoryCounts(overhead, "", prim_list_stats.data_structure_overhead);
-                setObjSteal(full, "data_structure_overhead", overhead);
-            }
-
-            PY_AutoObject types(PY_PyDict_New());
-            for (const PrimTypeStats& type_stats : prim_list_stats.prim_types) {
-                if (!types) break;
-                PY_PyObject* row = PY_PyDict_New();
-                if (!row) break;
-                setI64(row, "type_id", type_stats.type_id);
-                setI64(row, "count", type_stats.count);
-                setMemoryCounts(row, "", type_stats.memory);
-                setObjSteal(types, type_stats.type_name.c_str(), row);
-            }
-            if (types) PY_PyDict_SetItemString(full, "primitive_types", types);
-
-            PY_PyDict_SetItemString(d, "full_representation", full);
+        PY_AutoObject overhead(PY_PyDict_New());
+        if (overhead) {
+            setMemoryCounts(overhead, prim_list_stats.data_structure_overhead);
+            PY_PyDict_SetItemString(d, "data_structure_overhead", overhead);
         }
+
+        PY_AutoObject types(PY_PyDict_New());
+        for (const PrimTypeStats& type_stats : prim_list_stats.prim_types) {
+            if (!types) break;
+            PY_PyObject* row = PY_PyDict_New();
+            if (!row) break;
+            setI64(row, "type_id", type_stats.type_id);
+            setI64(row, "count", type_stats.count);
+            setMemoryCounts(row, type_stats.memory);
+            setObjSteal(types, type_stats.type_name.c_str(), row);
+        }
+        if (types) PY_PyDict_SetItemString(d, "primitive_types", types);
     }
 
     setPageDetails(d, prim_list_stats.page_stats);
@@ -1847,60 +1829,83 @@ pyDictFromPrimitiveListStats(const PrimitiveListStats& prim_list_stats) {
 }
 
 static PY_PyObject*
-pyDictFromOwnerStats(const OwnerStats& owner_stats) {
+pyDictFromIndexMapStats(const IndexMapStats& index_map_stats) {
     PY_AutoObject d(PY_PyDict_New());
     if (!d) return nullptr;
-    setI64(d, "owner", owner_stats.owner);
-    setI64(d, "offset_size", owner_stats.offset_size);
-    setI64(d, "index_size", owner_stats.index_size);
-    setI64(d, "num_pages", owner_stats.num_pages);
-    setMemoryCounts(d, "index_map", owner_stats.index_map_memory);
-    setMemoryCounts(d, "attributes", owner_stats.attribs_memory);
-    setBool(d, "is_monotonic", owner_stats.is_monotonic);
-    setBool(d, "is_trivial", owner_stats.is_trivial);
-    setI64(d, "page_mask_words", UT_BitArray::numWords(owner_stats.num_pages));
+    setI64(d, "owner", index_map_stats.owner);
+    setI64(d, "offset_size", index_map_stats.offset_size);
+    setI64(d, "index_size", index_map_stats.index_size);
+    setI64(d, "num_pages", index_map_stats.num_pages);
+    setMemoryCounts(d, index_map_stats.memory);
+    setBool(d, "is_monotonic", index_map_stats.is_monotonic);
+    setBool(d, "is_trivial", index_map_stats.is_trivial);
+
+    PY_AutoObject occupancy(PY_PyDict_New());
+    if (!occupancy) return nullptr;
+
+    setI64(occupancy, "page_mask_words", UT_BitArray::numWords(index_map_stats.num_pages));
 
     setObjSteal(
-        d,
+        occupancy,
         "num_active_per_page",
         bytesFromRaw(
-            owner_stats.num_active_per_page.getRawArray(),
-            sizeof(GA_Size) * owner_stats.num_active_per_page.size()
+            index_map_stats.num_active_per_page.getRawArray(),
+            sizeof(GA_Size) * index_map_stats.num_active_per_page.size()
         )
     );
     setObjSteal(
-        d,
+        occupancy,
         "num_temporary_per_page",
         bytesFromRaw(
-            owner_stats.num_temporary_per_page.getRawArray(),
-            sizeof(GA_Size) * owner_stats.num_temporary_per_page.size()
+            index_map_stats.num_temporary_per_page.getRawArray(),
+            sizeof(GA_Size) * index_map_stats.num_temporary_per_page.size()
         )
     );
     setObjSteal(
-        d,
+        occupancy,
         "num_vacant_per_page",
         bytesFromRaw(
-            owner_stats.num_vacant_per_page.getRawArray(),
-            sizeof(GA_Size) * owner_stats.num_vacant_per_page.size()
+            index_map_stats.num_vacant_per_page.getRawArray(),
+            sizeof(GA_Size) * index_map_stats.num_vacant_per_page.size()
         )
     );
 
     setObjSteal(
-        d,
+        occupancy,
         "active_page_bits",
         bytesFromRaw(
-            owner_stats.active_page_bits.getRawArray(),
-            sizeof(PageBits) * owner_stats.active_page_bits.size()
+            index_map_stats.active_page_bits.getRawArray(),
+            sizeof(PageBits) * index_map_stats.active_page_bits.size()
         )
     );
     setObjSteal(
-        d,
+        occupancy,
         "temporary_page_bits",
         bytesFromRaw(
-            owner_stats.temporary_page_bits.getRawArray(),
-            sizeof(PageBits) * owner_stats.temporary_page_bits.size()
+            index_map_stats.temporary_page_bits.getRawArray(),
+            sizeof(PageBits) * index_map_stats.temporary_page_bits.size()
         )
     );
+
+    setObjSteal(
+        occupancy,
+        "full_block_ranges",
+        bytesFromRaw(
+            index_map_stats.full_block_ranges.getRawArray(),
+            sizeof(GA_Offset) * index_map_stats.full_block_ranges.size()
+        )
+    );
+    PY_PyDict_SetItemString(d, "occupancy", occupancy);
+
+    PY_Py_INCREF(d);
+    return d;
+}
+
+static PY_PyObject*
+pyDictFromAttributeSetOwnerStats(const AttributeSetOwnerStats& owner_stats) {
+    PY_AutoObject d(PY_PyDict_New());
+    if (!d) return nullptr;
+    setMemoryCounts(d, owner_stats.memory);
 
     PY_AutoObject attribs_dict(PY_PyDict_New());
     if (!attribs_dict) return nullptr;
@@ -1924,14 +1929,6 @@ pyDictFromOwnerStats(const OwnerStats& owner_stats) {
     }
     PY_PyDict_SetItemString(d, "attributes", attribs_dict);
 
-    setObjSteal(
-        d,
-        "full_block_ranges",
-        bytesFromRaw(
-            owner_stats.full_block_ranges.getRawArray(),
-            sizeof(GA_Offset) * owner_stats.full_block_ranges.size()
-        )
-    );
     PY_Py_INCREF(d);
     return d;
 }
@@ -1947,71 +1944,121 @@ pyDictFromDetailStats(const DetailStats& report) {
 
     setI64(top, "num_tail_initializers", report.num_tail_initializers);
 
-    setMemoryCounts(top, "", report.memory);
+    setMemoryCounts(top, report.memory);
 
     {
-        PY_AutoObject memory(PY_PyDict_New());
-        if (!memory) return nullptr;
-        setMemoryCounts(memory, "attributes", report.attribs_memory);
-        setMemoryCounts(memory, "primitive_list", report.primitive_list_memory);
-        setMemoryCounts(memory, "attribute_set", report.attribute_set_memory);
-        setMemoryCounts(memory, "index_maps", report.index_maps_memory);
-        setMemoryCounts(memory, "gu_detail", report.gu_detail_memory);
-        setMemoryCounts(memory, "residual", report.residual_memory);
+        PY_AutoObject attribute_set(PY_PyDict_New());
+        if (!attribute_set) return nullptr;
+        setMemoryCounts(attribute_set, report.attribute_set.memory);
 
-        {
-            PY_AutoObject group_tables(PY_PyDict_New());
-            if (!group_tables) return nullptr;
-            for (int i = 0; i < ELEMENT_GROUP_TABLE_N; ++i) {
-                PY_AutoObject d(PY_PyDict_New());
-                if (!d) return nullptr;
-                setMemoryCounts(d, "", report.element_group_table_memory[i]);
-                PY_PyDict_SetItemString(group_tables, ownerLabel(ELEMENT_GROUP_TABLE_OWNERS[i]), d);
-            }
+        PY_AutoObject owners(PY_PyDict_New());
+        if (!owners) return nullptr;
+        for (GA_AttributeOwner owner : ALL_OWNERS)
+            setObjSteal(
+                owners,
+                ownerLabel(owner),
+                pyDictFromAttributeSetOwnerStats(report.attribute_set.owners[owner])
+            );
+        PY_PyDict_SetItemString(attribute_set, "owners", owners);
 
-            {
-                const DetailStats::EdgeGroupTableStats& edge_table_stats = report.edge_group_table;
-                PY_AutoObject                           d(PY_PyDict_New());
-                if (!d) return nullptr;
-                setMemoryCounts(d, "", edge_table_stats.memory);
-                setMemoryCounts(d, "name_map", edge_table_stats.name_map_memory);
-
-                PY_AutoObject edge_groups(PY_PyDict_New());
-                if (!edge_groups) return nullptr;
-                for (const DetailStats::EdgeGroupStats& g : edge_table_stats.groups) {
-                    PY_AutoObject gd(PY_PyDict_New());
-                    if (!gd) return nullptr;
-                    setMemoryCounts(gd, "", g.memory);
-                    setI64(gd, "data_id", g.data_id);
-                    setBool(gd, "is_data_id_found_in_inputs", g.is_data_id_found_in_inputs);
-                    PY_PyDict_SetItemString(edge_groups, g.name.c_str(), gd);
-                }
-                PY_PyDict_SetItemString(d, "groups", edge_groups);
-                PY_PyDict_SetItemString(group_tables, "edge", d);
-            }
-            PY_PyDict_SetItemString(memory, "group_tables", group_tables);
+        PY_AutoObject overhead(PY_PyDict_New());
+        if (overhead) {
+            setMemoryCounts(overhead, report.attribute_set.data_structure_overhead);
+            PY_PyDict_SetItemString(attribute_set, "data_structure_overhead", overhead);
         }
-        setMemoryCounts(memory, "group_tables", report.group_tables_memory);
-        PY_PyDict_SetItemString(top, "memory", memory);
+
+        PY_PyDict_SetItemString(top, "attribute_set", attribute_set);
     }
-
-    setI64(top, "page_size", GA_PAGE_SIZE);
-    setI64(top, "per_page_count_bytes", static_cast<int64>(sizeof(GA_Size)));
-    setI64(top, "page_word_bytes", static_cast<int64>(sizeof(UT_BitArray::BlockType)));
-    setI64(
-        top, "page_occupancy_words_per_page", static_cast<int64>(sizeof(PageBits) / sizeof(uint32))
-    );
-
-    PY_AutoObject owners(PY_PyDict_New());
-    if (!owners) return nullptr;
-
-    for (GA_AttributeOwner owner : ALL_OWNERS) {
-        const OwnerStats& owner_stats = report.owner_stats[owner];
-        setObjSteal(owners, ownerLabel(owner), pyDictFromOwnerStats(owner_stats));
-    }
-    PY_PyDict_SetItemString(top, "owners", owners);
 
     setObjSteal(top, "primitive_list", pyDictFromPrimitiveListStats(report.primitive_list));
+
+    {
+        PY_AutoObject index_maps(PY_PyDict_New());
+        if (!index_maps) return nullptr;
+        setMemoryCounts(index_maps, report.index_maps.memory);
+
+        PY_AutoObject owners(PY_PyDict_New());
+        if (!owners) return nullptr;
+        for (GA_AttributeOwner owner : ALL_OWNERS)
+            setObjSteal(
+                owners, ownerLabel(owner), pyDictFromIndexMapStats(report.index_maps.owners[owner])
+            );
+        PY_PyDict_SetItemString(index_maps, "owners", owners);
+
+        PY_PyDict_SetItemString(top, "index_maps", index_maps);
+    }
+
+    {
+        PY_AutoObject group_tables(PY_PyDict_New());
+        if (!group_tables) return nullptr;
+        setMemoryCounts(group_tables, report.group_tables.memory);
+
+        PY_AutoObject tables(PY_PyDict_New());
+        if (!tables) return nullptr;
+        for (int i = 0; i < ELEMENT_GROUP_TABLE_N; ++i) {
+            PY_AutoObject d(PY_PyDict_New());
+            if (!d) return nullptr;
+            setMemoryCounts(d, report.group_tables.element_group_table_memory[i]);
+            PY_PyDict_SetItemString(tables, ownerLabel(ELEMENT_GROUP_TABLE_OWNERS[i]), d);
+        }
+
+        {
+            const EdgeGroupTableStats& edge_table_stats = report.group_tables.edge_group_table;
+            PY_AutoObject              d(PY_PyDict_New());
+            if (!d) return nullptr;
+            setMemoryCounts(d, edge_table_stats.memory);
+
+            PY_AutoObject overhead(PY_PyDict_New());
+            if (overhead) {
+                setMemoryCounts(overhead, edge_table_stats.data_structure_overhead);
+                PY_PyDict_SetItemString(d, "data_structure_overhead", overhead);
+            }
+
+            PY_AutoObject edge_groups(PY_PyDict_New());
+            if (!edge_groups) return nullptr;
+            for (const EdgeGroupStats& g : edge_table_stats.groups) {
+                PY_AutoObject gd(PY_PyDict_New());
+                if (!gd) return nullptr;
+                setMemoryCounts(gd, g.memory);
+                setI64(gd, "data_id", g.data_id);
+                setBool(gd, "is_data_id_found_in_inputs", g.is_data_id_found_in_inputs);
+                PY_PyDict_SetItemString(edge_groups, g.name.c_str(), gd);
+            }
+            PY_PyDict_SetItemString(d, "groups", edge_groups);
+            PY_PyDict_SetItemString(tables, "edge", d);
+        }
+        PY_PyDict_SetItemString(group_tables, "tables", tables);
+
+        PY_PyDict_SetItemString(top, "group_tables", group_tables);
+    }
+
+    {
+        PY_AutoObject detail_object(PY_PyDict_New());
+        if (!detail_object) return nullptr;
+        setMemoryCounts(detail_object, report.gu_detail_memory);
+        PY_PyDict_SetItemString(top, "detail_object", detail_object);
+    }
+
+    {
+        PY_AutoObject unaccounted(PY_PyDict_New());
+        if (!unaccounted) return nullptr;
+        setMemoryCounts(unaccounted, report.residual_memory);
+        PY_PyDict_SetItemString(top, "unaccounted", unaccounted);
+    }
+
+    {
+        PY_AutoObject page_layout(PY_PyDict_New());
+        if (!page_layout) return nullptr;
+        setI64(page_layout, "page_size", GA_PAGE_SIZE);
+        setI64(page_layout, "per_page_count_bytes", static_cast<int64>(sizeof(GA_Size)));
+        setI64(page_layout, "page_word_bytes", static_cast<int64>(sizeof(UT_BitArray::BlockType)));
+        setI64(
+            page_layout,
+            "page_occupancy_words_per_page",
+            static_cast<int64>(sizeof(PageBits) / sizeof(uint32))
+        );
+        PY_PyDict_SetItemString(top, "page_layout", page_layout);
+    }
 
     PY_Py_INCREF(top);
     return top;
@@ -2089,9 +2136,9 @@ PyInit__page_tools(void) {
 
         static PY_PyMethodDef  methods[] = {
             {"report",
-             report_Wrapper,
-             PY_METH_VARARGS(),
-             "report(node_path [, output_index]) -> dict"},
+              report_Wrapper,
+              PY_METH_VARARGS(),
+              "report(node_path [, output_index]) -> dict"},
             {nullptr, nullptr, 0, nullptr}
         };
 
