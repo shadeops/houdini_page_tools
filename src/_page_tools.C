@@ -137,7 +137,6 @@
 //      # Populated if is a full representation, (is_full_representation = True), otherwise None
 //      'primitive_types': None | {
 //          <type_name> str: {
-//              'type_id': int,
 //              'count': int,
 //              'memory': {'total': int, 'new': int, 'unique': int},
 //          },
@@ -152,7 +151,6 @@
 //
 //      'owners': {
 //          'point | primitive | vertex | detail': {
-//              'owner': int,                      # enum of owner
 //              'offset_size': int,
 //              'index_size': int,
 //              'num_pages': int,
@@ -221,7 +219,7 @@
 //  },
 //
 //  'page_layout': {
-//      'page_size': int,                          # GA_PAGE_SIZE, needs to be 1024
+//      'page_size': int,                          # GA_PAGE_SIZE
 //      'per_page_count_bytes': int,               # bytes per entry in num_[active|temporary|vacant]_per_page
 //      'page_word_bytes': int,                    # word size of the per-page masks
 //      'page_occupancy_words_per_page': int,      # uint32 words per page in the occupancy masks
@@ -275,17 +273,15 @@
 
 #include <string>
 
-// Our bitarrays assume a page size of 1024, so verify just in case.
-static_assert(GA_PAGE_SIZE == 1024, "PageBits assumes GA_PAGE_SIZE == 1024");
+static_assert(GA_PAGE_SIZE % 32 == 0, "PageBits packs pages into whole uint32 words");
 
 namespace page_tools {
 
-// 1024 bits = GA_PAGE_SIZE
-// packed as 32 x uint32.
+// GA_PAGE_SIZE bits, packed as (GA_PAGE_SIZE / 32) x uint32.
 // page offset -> word (page_offset>>5)
 // bit(page_offset&31).
 struct PageBits {
-    uint32 bits[32] = {0};
+    uint32 bits[GA_PAGE_SIZE >> 5] = {0};
 };
 
 inline void
@@ -349,8 +345,7 @@ memoryCountsFromCounter(const CounterT& counter) {
 
 struct PrimTypeStats {
     UT_StringHolder type_name;
-    int             type_id = -1;
-    GA_Size         count   = 0;
+    GA_Size         count = 0;
     MemoryCounts    memory;
 };
 
@@ -429,7 +424,6 @@ struct PrimitiveListStats {
 };
 
 struct IndexMapStats {
-    GA_AttributeOwner   owner       = GA_ATTRIB_POINT;
     GA_Offset           offset_size = GA_Offset(0);
     GA_Index            index_size  = GA_Index(0);
     GA_Size             num_pages   = 0;
@@ -956,7 +950,6 @@ gatherPrimitiveTypeStats(
             prim_type_index                       = prim_types.append();
             type_id_to_index(type_id)             = prim_type_index;
             prim_types(prim_type_index).type_name = prim->getTypeName();
-            prim_types(prim_type_index).type_id   = type_id;
         }
 
         prim->countMemory(counter);
@@ -1046,7 +1039,6 @@ gatherIndexMapStats(
     IndexMapStats&                   index_map_stats
 ) {
     const GA_IndexMap& index_map = gdp->getIndexMap(owner);
-    index_map_stats.owner        = owner;
     index_map_stats.offset_size  = index_map.offsetSize();
     index_map_stats.index_size   = index_map.indexSize();
 
@@ -1816,7 +1808,6 @@ pyDictFromPrimitiveListStats(const PrimitiveListStats& prim_list_stats) {
             if (!types) break;
             PY_PyObject* row = PY_PyDict_New();
             if (!row) break;
-            setI64(row, "type_id", type_stats.type_id);
             setI64(row, "count", type_stats.count);
             setMemoryCounts(row, type_stats.memory);
             setObjSteal(types, type_stats.type_name.c_str(), row);
@@ -1832,7 +1823,6 @@ static PY_PyObject*
 pyDictFromIndexMapStats(const IndexMapStats& index_map_stats) {
     PY_AutoObject d(PY_PyDict_New());
     if (!d) return nullptr;
-    setI64(d, "owner", index_map_stats.owner);
     setI64(d, "offset_size", index_map_stats.offset_size);
     setI64(d, "index_size", index_map_stats.index_size);
     setI64(d, "num_pages", index_map_stats.num_pages);
