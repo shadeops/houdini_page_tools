@@ -2,17 +2,19 @@ import array
 import page_tools
 import hou
 
-def prep_page_report(occupancy, num_pages):
+def prep_page_report(occupancy, num_pages, page_layout):
 
-    assert array.array("l").itemsize == 8
-    assert array.array("I").itemsize == 4
+    assert page_layout["ga_size_in_bytes"] == array.array("q").itemsize
+    assert array.array("i").itemsize == 4       # VEX ints: the // 32 below assumes 32 bits
+    # The *_offset_bits are unpacked into 32-bit VEX ints, page_size bits per page.
+    vex_ints_per_page = page_layout["page_size"] // 32
 
     for k in (
         "num_active_per_page",
         "num_vacant_per_page",
         "num_temporary_per_page",
     ):
-        tmp = array.array("l")
+        tmp = array.array("q")
         tmp.frombytes(occupancy[k])
         assert len(tmp) == num_pages
         del occupancy[k]
@@ -23,18 +25,18 @@ def prep_page_report(occupancy, num_pages):
     ):
         if k not in occupancy:
             continue
-        tmp = array.array("l")
+        tmp = array.array("q")
         tmp.frombytes(occupancy[k])
         del occupancy[k]
         occupancy[k] = tmp
 
     for k in (
-        "temporary_page_bits",
-        "active_page_bits",
+        "temporary_offset_bits",
+        "active_offset_bits",
     ):
-        tmp = array.array("I")
+        tmp = array.array("i")
         tmp.frombytes(occupancy[k])
-        assert len(tmp) == num_pages * 32
+        assert len(tmp) == num_pages * vex_ints_per_page
         del occupancy[k]
         occupancy[k] = tmp
 
@@ -56,6 +58,7 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
     full_report = page_tools.report(sop)
 
     index_map_report = full_report["index_maps"]["owners"][owner]
+    page_layout = full_report["page_layout"]
     attributes = full_report["attribute_set"]["owners"][owner]["attributes"]
 
     num_pages_atr = geo.addAttrib(hou.attribType.Global, "num_pages", 0)
@@ -65,13 +68,20 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
         # empty geometry
         return
 
-    occupancy = prep_page_report(index_map_report["occupancy"], index_map_report["num_pages"])
+    num_pages = index_map_report["num_pages"]
+    occupancy = prep_page_report(index_map_report["occupancy"], num_pages, page_layout)
+    vex_ints_per_page = page_layout["page_size"] // 32
+    # The *_page_bits masks, truncated to the 32-bit VEX ints that hold num_pages bits.
+    vex_ints_per_mask = -(-num_pages // 32)
+    mask_bytes = vex_ints_per_mask * array.array("i").itemsize
 
-    active_bits = geo.addArrayAttrib(hou.attribType.Global, "active_bits", hou.attribData.Int, 32)
-    geo.setGlobalAttribValue(active_bits, occupancy["active_page_bits"])
+    active_bits = geo.addArrayAttrib(hou.attribType.Global, "active_bits", hou.attribData.Int,
+                                     vex_ints_per_page)
+    geo.setGlobalAttribValue(active_bits, occupancy["active_offset_bits"])
 
-    temporary_bits = geo.addArrayAttrib(hou.attribType.Global, "temporary_bits", hou.attribData.Int, 32)
-    geo.setGlobalAttribValue(temporary_bits, occupancy["temporary_page_bits"])
+    temporary_bits = geo.addArrayAttrib(hou.attribType.Global, "temporary_bits", hou.attribData.Int,
+                                        vex_ints_per_page)
+    geo.setGlobalAttribValue(temporary_bits, occupancy["temporary_offset_bits"])
 
     offset_size = geo.addAttrib(hou.attribType.Global, "offset_size", 0)
     geo.setGlobalAttribValue(offset_size, index_map_report["offset_size"])
@@ -94,7 +104,7 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
     constant_pages = array.array("i")
     hardened_pages = array.array("i")
     # padding for attributes that don't have page data available
-    empty_pages = array.array("i", [0,] * occupancy["page_mask_words"] )
+    empty_pages = array.array("i", [0,] * vex_ints_per_mask )
     scope_filter = (
         "public" if include_public else None,
         "private" if include_private else None,
@@ -116,10 +126,12 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
             else:
                 page_info.append(1)
                 t = array.array("i")
-                t.frombytes(page_details["constant_page_bits"])
+                # The report packs these as 64-bit ints so it is possible there can be an extra
+                # 4 bytes of data if num_pages % 64 is between [1 and 32]
+                t.frombytes(page_details["constant_page_bits"][:mask_bytes])
                 constant_pages.extend(t)
                 t = array.array("i")
-                t.frombytes(page_details["hardened_page_bits"])
+                t.frombytes(page_details["hardened_page_bits"][:mask_bytes])
                 hardened_pages.extend(t)
 
     attrib_names_atr = geo.addArrayAttrib(hou.attribType.Global, "attrib_names", hou.attribData.String, 1)
@@ -128,12 +140,10 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
     attrib_ids_atr = geo.addArrayAttrib(hou.attribType.Global, "attrib_ids", hou.attribData.Int, 1)
     geo.setGlobalAttribValue(attrib_ids_atr, attrib_ids)
 
-    # We double the array size here because constant_page_words is with respect to a exint (u64) but
-    # we are converting the array to u32[2] for VEX reasons.
-    constant_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "constant_pages", hou.attribData.Int, occupancy["page_mask_words"]*2)
+    constant_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "constant_pages", hou.attribData.Int, vex_ints_per_mask)
     geo.setGlobalAttribValue(constant_pages_atr, constant_pages)
 
-    hardened_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "hardened_pages", hou.attribData.Int, occupancy["page_mask_words"]*2)
+    hardened_pages_atr = geo.addArrayAttrib(hou.attribType.Global, "hardened_pages", hou.attribData.Int, vex_ints_per_mask)
     geo.setGlobalAttribValue(hardened_pages_atr, hardened_pages)
 
     page_info_atr = geo.addArrayAttrib(hou.attribType.Global, "page_info", hou.attribData.Int, 1)
@@ -143,7 +153,7 @@ def page_report_as_attribs(sop, geo, owner="point", include_public=True, include
     geo.setGlobalAttribValue(attribs_reported_atr, attribs_reported)
 
     page_words_atr = geo.addAttrib(hou.attribType.Global, "page_words", 0)
-    geo.setGlobalAttribValue(page_words_atr, occupancy["page_mask_words"]*2)
+    geo.setGlobalAttribValue(page_words_atr, vex_ints_per_mask)
 
     if "full_block_ranges" in occupancy:
         full_block_ranges_atr = geo.addArrayAttrib(hou.attribType.Global, "full_block_ranges", hou.attribData.Int, 2)

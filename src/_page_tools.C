@@ -89,12 +89,12 @@
 //                              # sizeof(PageTableEntry) wide, and not all zero).
 //                              'num_constant_shared_pages': int,
 //
-//                              'constant_page_bits': bytes,    # bitarray (one bit per page)
+//                              'constant_page_bits': bytes,    # UT_BitArray, one bit per page
 //
 //                              # if has_hardened_details is false the values will all be 0
 //                              # and a page bit will either be constant or unknown
-//                              'hardened_page_bits': bytes,    # bitarray (one bit per page)
-//                              'shared_page_bits': bytes,      # bitarray (one bit per page)
+//                              'hardened_page_bits': bytes,    # UT_BitArray, one bit per page
+//                              'shared_page_bits': bytes,      # UT_BitArray, one bit per page
 //
 //                              # there are two other easily derivable states that we don't export to
 //                              # keep the export cost down, but if a consumer were to want them they
@@ -163,13 +163,15 @@
 //              'memory': {'total': int, 'new': int, 'unique': int},
 //
 //              'occupancy': {
-//                  'page_mask_words': int,
-//                  'num_active_per_page': bytes,      # i64 array, one element per page
-//                  'num_temporary_per_page': bytes,   # i64 array, one element per page
-//                  'num_vacant_per_page': bytes,      # i64 array, one element per page
-//                  'active_page_bits': bytes,         # bitarray, one bit per page offset, uint32[32]
-//                  'temporary_page_bits': bytes,      # bitarray, one bit per page offset, uint32[32]
-//                  'full_block_ranges': bytes,        # int64[2] array, [start, end)
+//                  # Array of integers of size page_layout.ga_size_in_bytes
+//                  'num_active_per_page': bytes,
+//                  'num_temporary_per_page': bytes,
+//                  'num_vacant_per_page': bytes,
+//                  # One bit per offset, page_size bits per page
+//                  'active_offset_bits': bytes,
+//                  'temporary_offset_bits': bytes,
+//                  # GA_Offset pairs [start, end), page_layout.ga_size_in_bytes bytes each
+//                  'full_block_ranges': bytes,
 //              },
 //          },
 //      },
@@ -219,12 +221,19 @@
 //  },
 //
 //  'page_layout': {
-//      'page_size': int,                          # GA_PAGE_SIZE
-//      'per_page_count_bytes': int,               # bytes per entry in num_[active|temporary|vacant]_per_page
-//      'page_word_bytes': int,                    # word size of the per-page masks
-//      'page_occupancy_words_per_page': int,      # uint32 words per page in the occupancy masks
+//      'page_size': int,                     # GA_PAGE_SIZE: offsets (bits) per page
+//      'ga_size_in_bytes': int,              # sizeof(GA_Size): num_*_per_page, full_block_ranges
 //  },
 // }
+//
+// Example of decoding via numpy
+//   layout = report['page_layout']
+//   owner = report['index_maps']['owners']['point']
+//   occupancy, num_pages = owner['occupancy'], owner['num_pages']
+//   ga_size = np.dtype(f"<i{layout['ga_size_in_bytes']}")
+//   num_active = np.frombuffer(occupancy['num_active_per_page'], ga_size)
+//   active = np.unpackbits(np.frombuffer(occupancy['active_offset_bits'], np.uint8),
+//                          bitorder='little').reshape(num_pages, layout['page_size'])
 // clang-format on
 
 // Needs to be included first per comments in the header
@@ -273,19 +282,19 @@
 
 #include <string>
 
-static_assert(GA_PAGE_SIZE % 32 == 0, "PageBits packs pages into whole uint32 words");
+static_assert(GA_PAGE_SIZE % 32 == 0, "PageOffsetBits packs pages into whole uint32 words");
 
 namespace page_tools {
 
 // GA_PAGE_SIZE bits, packed as (GA_PAGE_SIZE / 32) x uint32.
 // page offset -> word (page_offset>>5)
 // bit(page_offset&31).
-struct PageBits {
+struct PageOffsetBits {
     uint32 bits[GA_PAGE_SIZE >> 5] = {0};
 };
 
 inline void
-setPageBit(uint32* mask, GA_Size page_offset) {
+setOffsetBit(uint32* mask, GA_Size page_offset) {
     mask[page_offset >> 5] |= (static_cast<uint32>(1) << (page_offset & 31));
 }
 
@@ -424,22 +433,22 @@ struct PrimitiveListStats {
 };
 
 struct IndexMapStats {
-    GA_Offset           offset_size = GA_Offset(0);
-    GA_Index            index_size  = GA_Index(0);
-    GA_Size             num_pages   = 0;
+    GA_Offset                offset_size = GA_Offset(0);
+    GA_Index                 index_size  = GA_Index(0);
+    GA_Size                  num_pages   = 0;
 
-    MemoryCounts        memory;
+    MemoryCounts             memory;
 
-    bool                is_monotonic = false;
-    bool                is_trivial   = false;
+    bool                     is_monotonic = false;
+    bool                     is_trivial   = false;
 
-    UT_Array<GA_Size>   num_active_per_page;
-    UT_Array<GA_Size>   num_temporary_per_page;
-    UT_Array<GA_Size>   num_vacant_per_page;
-    UT_Array<PageBits>  active_page_bits;
-    UT_Array<PageBits>  temporary_page_bits;
+    UT_Array<GA_Size>        num_active_per_page;
+    UT_Array<GA_Size>        num_temporary_per_page;
+    UT_Array<GA_Size>        num_vacant_per_page;
+    UT_Array<PageOffsetBits> active_offset_bits;
+    UT_Array<PageOffsetBits> temporary_offset_bits;
 
-    UT_Array<GA_Offset> full_block_ranges;
+    UT_Array<GA_Offset>      full_block_ranges;
 };
 
 struct AttributeSetOwnerStats {
@@ -1054,8 +1063,8 @@ gatherIndexMapStats(
     index_map_stats.num_active_per_page.setSize(num_pages);
     index_map_stats.num_temporary_per_page.setSize(num_pages);
     index_map_stats.num_vacant_per_page.setSize(num_pages);
-    index_map_stats.active_page_bits.setSize(num_pages);
-    index_map_stats.temporary_page_bits.setSize(num_pages);
+    index_map_stats.active_offset_bits.setSize(num_pages);
+    index_map_stats.temporary_offset_bits.setSize(num_pages);
 
     if (index_map_stats.is_trivial) {
         for (GA_Size page = 0; page < num_pages; ++page) {
@@ -1067,7 +1076,7 @@ gatherIndexMapStats(
             index_map_stats.num_temporary_per_page[page] = 0;
             index_map_stats.num_vacant_per_page[page]    = 0;
 
-            uint32*       bits       = index_map_stats.active_page_bits[page].bits;
+            uint32*       bits       = index_map_stats.active_offset_bits[page].bits;
             const GA_Size full_words = page_count >> 5;
 
             for (GA_Size word = 0; word < full_words; ++word)
@@ -1083,14 +1092,14 @@ gatherIndexMapStats(
             GA_Size         active     = 0;
             GA_Size         temporary  = 0;
             GA_Size         vacant     = 0;
-            PageBits&       active_page_bits    = index_map_stats.active_page_bits[page];
-            PageBits&       temporary_page_bits = index_map_stats.temporary_page_bits[page];
+            PageOffsetBits& active_offset_bits    = index_map_stats.active_offset_bits[page];
+            PageOffsetBits& temporary_offset_bits = index_map_stats.temporary_offset_bits[page];
             for (GA_Offset offset = page_start; offset < page_end; ++offset) {
                 if (index_map.isOffsetActive(offset)) {
-                    setPageBit(active_page_bits.bits, GAgetPageOff(offset));
+                    setOffsetBit(active_offset_bits.bits, GAgetPageOff(offset));
                     ++active;
                 } else if (index_map.isOffsetTransient(offset)) {
-                    setPageBit(temporary_page_bits.bits, GAgetPageOff(offset));
+                    setOffsetBit(temporary_offset_bits.bits, GAgetPageOff(offset));
                     ++temporary;
                 } else {
                     ++vacant;
@@ -1862,18 +1871,18 @@ pyDictFromIndexMapStats(const IndexMapStats& index_map_stats) {
 
     setObjSteal(
         occupancy,
-        "active_page_bits",
+        "active_offset_bits",
         bytesFromRaw(
-            index_map_stats.active_page_bits.getRawArray(),
-            sizeof(PageBits) * index_map_stats.active_page_bits.size()
+            index_map_stats.active_offset_bits.getRawArray(),
+            sizeof(PageOffsetBits) * index_map_stats.active_offset_bits.size()
         )
     );
     setObjSteal(
         occupancy,
-        "temporary_page_bits",
+        "temporary_offset_bits",
         bytesFromRaw(
-            index_map_stats.temporary_page_bits.getRawArray(),
-            sizeof(PageBits) * index_map_stats.temporary_page_bits.size()
+            index_map_stats.temporary_offset_bits.getRawArray(),
+            sizeof(PageOffsetBits) * index_map_stats.temporary_offset_bits.size()
         )
     );
 
@@ -2040,13 +2049,7 @@ pyDictFromDetailStats(const DetailStats& report) {
         PY_AutoObject page_layout(PY_PyDict_New());
         if (!page_layout) return nullptr;
         setI64(page_layout, "page_size", GA_PAGE_SIZE);
-        setI64(page_layout, "per_page_count_bytes", static_cast<int64>(sizeof(GA_Size)));
-        setI64(page_layout, "page_word_bytes", static_cast<int64>(sizeof(UT_BitArray::BlockType)));
-        setI64(
-            page_layout,
-            "page_occupancy_words_per_page",
-            static_cast<int64>(sizeof(PageBits) / sizeof(uint32))
-        );
+        setI64(page_layout, "ga_size_in_bytes", static_cast<int64>(sizeof(GA_Size)));
         PY_PyDict_SetItemString(top, "page_layout", page_layout);
     }
 
