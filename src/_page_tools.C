@@ -1842,8 +1842,6 @@ pyDictFromIndexMapStats(const IndexMapStats& index_map_stats) {
     PY_AutoObject occupancy(PY_PyDict_New());
     if (!occupancy) return nullptr;
 
-    setI64(occupancy, "page_mask_words", UT_BitArray::numWords(index_map_stats.num_pages));
-
     setObjSteal(
         occupancy,
         "num_active_per_page",
