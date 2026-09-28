@@ -27,26 +27,34 @@ else:
     <script scriptType="python"><![CDATA[
 import page_tools
 
-sop_node = hou.selectedNodes()[-1]
-if sop_node.type().category().name() != "Sop":
-	return
-	
-file_path = hou.ui.selectFile(
-	title="Export SOP Memory Report",
-	pattern = "*.json",
-	default_value = f"{sop_node.name()}.json",
-	chooser_mode=hou.fileChooserMode.Write,
-)
-if file_path is None:
-	return
+def _export(kwargs):
+	try:
+		sop_node = hou.selectedNodes()[-1]
+	except IndexError:
+		hou.ui.displayMessage("Nothing Selected", severity=hou.severityType.Error)
+		return
 
-full_page_details = not kwargs["shiftclick"]
+	if sop_node.type().category().name() != "Sop":
+		return
+		
+	file_path = hou.ui.selectFile(
+		title="Export SOP Memory Report",
+		pattern = "*.json",
+		default_value = f"{sop_node.name()}.json",
+		chooser_mode=hou.fileChooserMode.Write,
+	)
+	if file_path is None:
+		return
 
-page_exports.export_page_report(
-	sop_node,
-	hou.text.expandString(file_path),
-	page_info=full_page_details
-)
+	full_page_details = not kwargs["shiftclick"]
+
+	page_tools.export_page_report(
+		sop_node,
+		hou.text.expandString(file_path),
+		page_info=full_page_details
+	)
+
+_export(kwargs)
 ]]></script>
   </tool>
 

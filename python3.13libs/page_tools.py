@@ -106,10 +106,10 @@ class PageEncoder(json.JSONEncoder):
 
 def export_page_report(sop_node, file_path, page_info=True):
 
-    report = report(sop_node)
+    report_dict = report(sop_node)
 
     if not page_info:
-        for owner_report in report["attribute_set"]["owners"].values():
+        for owner_report in report_dict["attribute_set"]["owners"].values():
             for attrib_scope in owner_report["attributes"].values():
                 for attrib in attrib_scope.values():
                     del attrib["shares_with_attrib_keys"]
@@ -119,16 +119,16 @@ def export_page_report(sop_node, file_path, page_info=True):
                         del page_report["hardened_page_bits"]
                         del page_report["shared_page_bits"]
 
-        for index_map_report in report["index_maps"]["owners"].values():
+        for index_map_report in report_dict["index_maps"]["owners"].values():
             del index_map_report["occupancy"]
 
-        if page_report := report["primitive_list"]["page_details"]:
+        if page_report := report_dict["primitive_list"]["page_details"]:
             del page_report["constant_page_bits"]
             del page_report["hardened_page_bits"]
             del page_report["shared_page_bits"]
 
     with open(file_path, "w") as f:
-        json.dump(report, f, cls=PageEncoder, indent=2)
+        json.dump(report_dict, f, cls=PageEncoder, indent=2)
 
 
 def load_page_report(file_path):
